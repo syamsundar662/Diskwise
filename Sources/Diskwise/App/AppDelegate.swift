@@ -37,6 +37,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             .sink { [weak self] _ in self?.updateStatusItem() }.store(in: &changes)
 
         model.start()
+        DiscFrames.shared.load()
         _ = Updater.shared  // starts Sparkle's scheduled update checks
         updateStatusItem()
         if !atLogin || !prefs.onboardingDone || !prefs.showMenuBarItem {

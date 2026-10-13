@@ -22,6 +22,12 @@ enum Art {
         .appendingPathComponent("Resources/Art")
     private static var cache: [String: NSImage] = [:]
 
+    static func url(_ name: String) -> URL? {
+        if let bundled = Bundle.main.url(forResource: name, withExtension: "png") { return bundled }
+        let local = repoFolder.appendingPathComponent(name + ".png")
+        return FileManager.default.fileExists(atPath: local.path) ? local : nil
+    }
+
     static func image(_ name: String) -> NSImage? {
         if let cached = cache[name] { return cached }
         let image = Bundle.main.image(forResource: name)
@@ -77,9 +83,10 @@ struct RoundActionButton: View {
     var body: some View {
         Button(action: action) {
             ZStack {
-                Circle().fill(tint.opacity(hovering ? 0.75 : 0.55)).blur(radius: 26)
+                // Fading a blurred glow is cheap; resizing it would blur it again every frame.
+                Circle().fill(tint.opacity(0.65)).blur(radius: 26)
                     .frame(width: size * 1.25, height: size * 1.25)
-                    .scaleEffect(breathing ? 1.06 : 0.94)
+                    .opacity(hovering ? 1 : breathing ? 0.85 : 0.55)
                 Circle().fill(RadialGradient(colors: [tint.mix(.white, 0.38), tint, tint.mix(.black, 0.28)],
                                              center: UnitPoint(x: 0.4, y: 0.25), startRadius: 0, endRadius: size * 0.7))
                 Circle().strokeBorder(.white.opacity(0.75), lineWidth: 2.5)

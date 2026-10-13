@@ -6,14 +6,12 @@ import DiskwiseCore
 struct SmartCareView: View {
     @ObservedObject var model: AppModel
     @State private var shown = RenderMode.snapshot
-    /// Cursor pull on the disc, -1...1 per axis.
-    @State private var tilt = CGSize.zero
-    @State private var pointer: CGPoint?
+    /// Hands the cursor to the disc's layers directly, so moving the mouse doesn't re-render this page.
+    @State private var motion = DiscMotion()
     @State private var heroCenter = CGPoint(x: 300, y: 300)
     @State private var ripples = 0
     @State private var bursts = 0
-    @State private var celebratedAt: Date?
-    @State private var bounce = false
+    @State private var bounces = 0
 
     private let tint = Color(0.40, 0.45, 1.0)
 
@@ -46,24 +44,24 @@ struct SmartCareView: View {
     var body: some View {
         ZStack {
             // A soft light that follows the cursor.
-            if let pointer {
-                Circle().fill(NavItem.dashboard.gradient.glow.opacity(0.22)).frame(width: 420, height: 420).blur(radius: 90)
-                    .position(pointer)
+            if !RenderMode.snapshot {
+                PointerLight(motion: motion, color: NavItem.dashboard.gradient.glow)
                     .allowsHitTesting(false)
-                    .transition(.opacity)
             }
             HStack(spacing: 50) {
                 ZStack {
                     if phase == .scanning { OrbitLight(glow: NavItem.dashboard.gradient.glow, size: 340).transition(.opacity) }
-                    InteractiveDisc(tilt: tilt, size: 340, glow: NavItem.dashboard.gradient.glow,
-                                    scanning: phase == .scanning, celebratedAt: celebratedAt)
-                        .scaleEffect(bounce ? 0.93 : 1)
-                        .onTapGesture {
-                            withAnimation(.spring(response: 0.18, dampingFraction: 0.5)) { bounce = true }
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.14) {
-                                withAnimation(.spring(response: 0.35, dampingFraction: 0.45)) { bounce = false }
-                            }
+                    discGlow
+                    Group {
+                        if RenderMode.snapshot {
+                            Image(nsImage: Art.image("disc-tilt-3-2") ?? NSImage()).resizable().aspectRatio(contentMode: .fit)
+                        } else {
+                            DiscView(motion: motion, scanning: phase == .scanning, celebrations: bursts, bounces: bounces)
                         }
+                    }
+                    .frame(width: 340, height: 340)
+                    .contentShape(Circle())
+                    .onTapGesture { bounces += 1 }
                     CompletionBurst(tint: NavItem.dashboard.gradient.glow, trigger: bursts)
                 }
                 .background(GeometryReader { geo in
@@ -125,26 +123,30 @@ struct SmartCareView: View {
         .onContinuousHover(coordinateSpace: .named("care")) { hover in
             switch hover {
             case .active(let point):
-                let pull = CGSize(width: max(-1, min(1, (point.x - heroCenter.x) / 420)),
-                                  height: max(-1, min(1, (heroCenter.y - point.y) / 320)))
-                withAnimation(.interactiveSpring(response: 0.5, dampingFraction: 0.8)) { tilt = pull }
-                withAnimation(.easeOut(duration: 0.25)) { pointer = point }
+                motion.pointer(point, heroCenter: heroCenter)
             case .ended:
-                withAnimation(.spring(response: 0.8, dampingFraction: 0.55)) { tilt = .zero }
-                withAnimation(.easeOut(duration: 0.4)) { pointer = nil }
+                motion.pointer(nil, heroCenter: heroCenter)
             }
         }
         .onChange(of: phase) { old, new in
             guard old == .scanning, new == .done else { return }
             // The scan finished: spin and pop the disc, burst, then bring the results in again.
-            celebratedAt = Date()
             bursts += 1
-            // Stop the disc's frame clock once the spin is over.
-            DispatchQueue.main.asyncAfter(deadline: .now() + InteractiveDisc.celebration + 0.1) { celebratedAt = nil }
             shown = false
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { withAnimation { shown = true } }
         }
         .onAppear { withAnimation { shown = true } }
+    }
+
+    /// Glow and shadow under the disc. They stay still, so their blur is drawn once.
+    private var discGlow: some View {
+        let glow = NavItem.dashboard.gradient.glow
+        return ZStack {
+            Ellipse().fill(glow.opacity(0.5)).frame(width: 265, height: 68).blur(radius: 30).offset(y: 150)
+            Circle().fill(glow.opacity(phase == .scanning ? 0.4 : 0.24)).frame(width: 306, height: 306).blur(radius: 54)
+                .animation(.easeInOut(duration: 0.6), value: phase)
+        }
+        .allowsHitTesting(false)
     }
 
     private var buttonTitle: String {
