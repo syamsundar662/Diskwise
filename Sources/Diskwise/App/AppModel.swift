@@ -18,6 +18,16 @@ struct Confirmation: Identifiable {
     let perform: () -> Void
 }
 
+/// Progress of a cleanup or project deletion, for the window's animated overlay.
+struct CleaningState: Equatable {
+    var total: Int64
+    var freed: Int64 = 0
+    var current = ""
+    var finished = false
+    var failed = 0
+    var trashed = false
+}
+
 struct Toast: Equatable {
     let text: String
     var emptyTrash = false
@@ -51,7 +61,13 @@ final class AppModel: ObservableObject {
     @Published var leftoversLoading = false
 
     @Published var history = SpaceHistory()
+    /// Menu bar panel navigation.
     @Published var page: Page = .home
+    /// Main window navigation.
+    @Published var section: NavItem = .dashboard
+    /// The app shown in the window's uninstaller detail.
+    @Published var windowApp: String?
+    @Published var cleaning: CleaningState?
     @Published var busy: String?
     @Published var toast: Toast?
     @Published var confirmation: Confirmation?
@@ -72,6 +88,7 @@ final class AppModel: ObservableObject {
     private var toastTask: Task<Void, Never>?
     /// Checkboxes the user changed by hand, kept across reloads.
     private var choices: [String: Bool] = [:]
+    private var leftoversFor: String?
 
     init(readOnly: Bool = false) {
         self.readOnly = readOnly
@@ -93,7 +110,11 @@ final class AppModel: ObservableObject {
             scan = cached
             deriveFromScan(cached)
         }
-        if scan.map({ Date().timeIntervalSince($0.date) > 12 * 3600 }) ?? true { startScan() }
+        // The first scan waits for onboarding, so Full Disk Access can be granted before
+        // macOS starts asking about single folders.
+        if Preferences.shared.onboardingDone, scan.map({ Date().timeIntervalSince($0.date) > 12 * 3600 }) ?? true {
+            startScan()
+        }
         if alertsOn, !readOnly { Notifier.requestPermission() }
     }
 
@@ -122,6 +143,7 @@ final class AppModel: ObservableObject {
         disk = info
         guard !readOnly else { return }
         if history.record(info.available) { history.save(Store.historyURL) }
+        alert.threshold = Int64(Preferences.shared.alertThresholdGB) * Bytes.gb
         if alertsOn, alert.shouldAlert(available: info.available) { Notifier.lowSpace(info) }
     }
 
@@ -230,14 +252,22 @@ final class AppModel: ObservableObject {
 
     private func runClean(_ plan: [(removal: CleanupGroup.Removal, items: [CleanupItem], title: String)]) {
         busy = "Cleaning..."
+        cleaning = CleaningState(total: plan.flatMap(\.items).reduce(0) { $0 + ($1.size ?? 0) })
         work.async { [weak self] in
             var report = RemovalReport()
             for step in plan {
-                DispatchQueue.main.async { self?.busy = "Cleaning \(step.title)..." }
-                let r = Remover.remove(step.items, removal: step.removal)
-                report.freed += r.freed
-                report.removed += r.removed
-                report.failed.merge(r.failed) { a, _ in a }
+                for item in step.items {
+                    DispatchQueue.main.async {
+                        self?.busy = "Cleaning \(step.title)..."
+                        self?.cleaning?.current = "\(step.title): \(item.name)"
+                    }
+                    let r = Remover.remove([item], removal: step.removal)
+                    report.freed += r.freed
+                    report.removed += r.removed
+                    report.failed.merge(r.failed) { a, _ in a }
+                    let freed = report.freed
+                    DispatchQueue.main.async { self?.cleaning?.freed = freed }
+                }
             }
             DispatchQueue.main.async { self?.finishRemoval(report, trashed: false) }
         }
@@ -288,8 +318,8 @@ final class AppModel: ObservableObject {
     private func deriveFromScan(_ result: ScanResult) {
         let junk = result.junk
         DispatchQueue.global(qos: .utility).async { [weak self] in
-            let projects = ProjectJunk.items(from: junk)
-            let downloads = Downloads.old()
+            let projects = ProjectJunk.items(from: junk).filter { !SafeDelete.isExcluded($0.path) }
+            let downloads = Downloads.old().filter { !SafeDelete.isExcluded($0.path) }
             DispatchQueue.main.async {
                 guard let self else { return }
                 self.projects = projects
@@ -299,7 +329,23 @@ final class AppModel: ObservableObject {
         }
     }
 
-    var largeFiles: [LargeFile] { scan?.largeFiles ?? [] }
+    var largeFiles: [LargeFile] { (scan?.largeFiles ?? []).filter { !SafeDelete.isExcluded($0.path) } }
+
+    /// After Settings changes the excluded folders.
+    func exclusionsChanged() {
+        projects.removeAll { SafeDelete.isExcluded($0.path) }
+        projectSelection = projectSelection.filter { !SafeDelete.isExcluded($0) }
+        downloads.removeAll { SafeDelete.isExcluded($0.path) }
+        fileSelection = fileSelection.filter { !SafeDelete.isExcluded($0) }
+        loadCleanup()
+    }
+
+    /// How far the running scan is, estimated from the last scan's size.
+    var scanFraction: Double {
+        guard let progress = scanProgress else { return 0 }
+        let expected = max(scan?.root.size ?? (disk.map { $0.used / 2 } ?? 1), 1)
+        return min(Double(progress.bytes) / Double(expected), 0.99)
+    }
     var staleProjects: [ProjectJunkItem] { projects.filter { $0.isStale() } }
 
     func confirmDeleteProjects() {
@@ -328,9 +374,11 @@ final class AppModel: ObservableObject {
 
     private func remove(_ paths: [String], sizes: [Int64], mode: SafeDelete.Mode) {
         busy = mode == .trash ? "Moving to the Trash..." : "Deleting..."
+        cleaning = CleaningState(total: sizes.reduce(0, +), trashed: mode == .trash)
         work.async { [weak self] in
             var report = RemovalReport()
             for (path, size) in zip(paths, sizes) {
+                DispatchQueue.main.async { self?.cleaning?.current = (path as NSString).lastPathComponent }
                 do {
                     if mode == .delete, !ProjectJunk.names.contains((path as NSString).lastPathComponent) {
                         throw CocoaError(.fileWriteNoPermission)
@@ -341,6 +389,8 @@ final class AppModel: ObservableObject {
                 } catch {
                     report.failed[path] = error.localizedDescription
                 }
+                let freed = report.freed
+                DispatchQueue.main.async { self?.cleaning?.freed = freed }
             }
             DispatchQueue.main.async { self?.finishRemoval(report, trashed: mode == .trash) }
         }
@@ -348,6 +398,9 @@ final class AppModel: ObservableObject {
 
     private func finishRemoval(_ report: RemovalReport, trashed: Bool) {
         busy = nil
+        cleaning?.freed = report.freed
+        cleaning?.failed = report.failed.count
+        cleaning?.finished = true
         forget(report.removed)
         var text: String
         if trashed {
@@ -399,8 +452,14 @@ final class AppModel: ObservableObject {
         }
     }
 
+    /// Panel: shows the app's detail page.
     func openApp(_ app: InstalledApp) {
         page = .app(app.path)
+        loadLeftovers(for: app)
+    }
+
+    func loadLeftovers(for app: InstalledApp) {
+        leftoversFor = app.path
         leftovers = []
         leftoverSelection = []
         leftoversLoading = true
@@ -413,7 +472,7 @@ final class AppModel: ObservableObject {
             }
             for i in found.indices { found[i].size = sizes[i] }
             DispatchQueue.main.async {
-                guard let self, self.page == .app(app.path) else { return }
+                guard let self, self.leftoversFor == app.path else { return }
                 self.leftovers = found
                 self.leftoverSelection = Set(found.map(\.path))
                 self.leftoversLoading = false
@@ -455,7 +514,8 @@ final class AppModel: ObservableObject {
                     return
                 }
                 self.apps.removeAll { $0.path == app.path }
-                self.page = .apps
+                if self.page == .app(app.path) { self.page = .apps }
+                if self.windowApp == app.path { self.windowApp = nil }
                 var text = "Moved \(app.name) (\(Bytes.format(total))) to the Trash."
                 if failed.count > 0 { text += " \(failed.count) items couldn't be moved." }
                 self.show(Toast(text: text, emptyTrash: true))

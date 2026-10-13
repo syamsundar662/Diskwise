@@ -1,0 +1,73 @@
+name: Diskwise
+options:
+  bundleIdPrefix: com.syam
+  deploymentTarget:
+    macOS: "14.0"
+  createIntermediateGroups: true
+
+configs:
+  Debug: debug
+  Release: release
+
+settings:
+  base:
+    MACOSX_DEPLOYMENT_TARGET: "14.0"
+    SWIFT_VERSION: "5.0"
+    MARKETING_VERSION: "1.0.0"
+    CURRENT_PROJECT_VERSION: "1"
+    ENABLE_HARDENED_RUNTIME: YES
+    ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+    ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS: NO
+
+packages:
+  DiskwiseCore:
+    path: .
+  Sparkle:
+    url: https://github.com/sparkle-project/Sparkle
+    from: 2.6.0
+
+targets:
+  Diskwise:
+    type: application
+    platform: macOS
+    deploymentTarget: "14.0"
+    sources:
+      - path: Sources/Diskwise
+      - path: Resources
+        excludes:
+          - Info.plist
+          - Diskwise.entitlements
+          - AppIcon-1024.png
+    info:
+      path: Resources/Info.plist
+      properties:
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
+        CFBundleIconName: AppIcon
+        LSApplicationCategoryType: public.app-category.utilities
+        LSUIElement: false
+        LSMinimumSystemVersion: "$(MACOSX_DEPLOYMENT_TARGET)"
+        NSHighResolutionCapable: true
+        NSPrincipalClass: NSApplication
+        NSAppleEventsUsageDescription: "Diskwise asks Finder to empty the Trash and to move apps that need your password to the Trash."
+        NSHumanReadableCopyright: "Copyright 2026 Syam Sundar. All rights reserved."
+        SUFeedURL: "https://github.com/syamsundar662/Diskwise/releases/latest/download/appcast.xml"
+        SUPublicEDKey: "+lsbS7xTmgYPD6W6hQg3Yy6XPLvSO4gG+iSm5aoygI8="
+        SUEnableAutomaticChecks: true
+    entitlements:
+      path: Resources/Diskwise.entitlements
+      properties:
+        com.apple.security.app-sandbox: false
+        com.apple.security.automation.apple-events: true
+    settings:
+      base:
+        PRODUCT_NAME: Diskwise
+        PRODUCT_BUNDLE_IDENTIFIER: com.syam.Diskwise
+        CODE_SIGN_STYLE: Manual
+        CODE_SIGN_IDENTITY: ""
+    dependencies:
+      - package: DiskwiseCore
+        product: DiskwiseCore
+        embed: false
+      - package: Sparkle
+        product: Sparkle

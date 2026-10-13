@@ -194,12 +194,13 @@ public enum CleanupCatalog {
                     guard isDir.boolValue, let names = try? fileManager.contentsOfDirectory(atPath: base) else { continue }
                     for name in names.sorted() where !skip(name, in: root.path, claimed: claimed) {
                         let path = base + "/" + name
+                        if SafeDelete.isExcluded(path) { continue }
                         guard seen.insert(path).inserted else { continue }
                         group.items.append(CleanupItem(path: path, name: displayName(name, path: path, group: group.id),
                                                        source: root.label,
                                                        inUseBy: group.skipsOpenApps ? owner(of: name, running: running) : nil))
                     }
-                } else if seen.insert(base).inserted {
+                } else if !SafeDelete.isExcluded(base), seen.insert(base).inserted {
                     let owner = group.skipsOpenApps ? owner(of: root.label, running: running) : nil
                     let name = group.id == "app-support" ? (root.path as NSString).lastPathComponent : root.label
                     group.items.append(CleanupItem(path: base, name: name, source: root.label, inUseBy: owner))

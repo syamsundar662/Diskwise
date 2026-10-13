@@ -5,6 +5,7 @@ import DiskwiseCore
 struct CleanupPage: View {
     @ObservedObject var model: AppModel
     var live: Bool
+    var listHeight: CGFloat? = 380
     @State private var expanded: Set<String> = []
 
     var body: some View {
@@ -19,7 +20,7 @@ struct CleanupPage: View {
                     .buttonStyle(.plain).font(.system(size: 11, weight: .semibold)).foregroundStyle(Theme.cyan)
                     .help("Select the safe defaults again")
             }
-            ListArea(live: live, height: 380) {
+            ListArea(live: live, height: listHeight) {
                 if model.groups.isEmpty {
                     if model.cleanupLoading {
                         EmptyNote(symbol: "magnifyingglass", title: "Looking for junk...")

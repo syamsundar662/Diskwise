@@ -20,7 +20,7 @@ struct PanelView: View {
         }
         .frame(width: Self.width)
         .glassPanel(live: live)
-        .overlay(alignment: .bottom) { statusOverlay }
+        .overlay(alignment: .bottom) { StatusOverlay(model: model) }
         .overlay(alignment: .topTrailing) { if showingMenu { menu } }
         .overlay { if let confirmation = model.confirmation { ConfirmCard(confirmation: confirmation, model: model) } }
         .environment(\.colorScheme, .dark)
@@ -70,6 +70,10 @@ struct PanelView: View {
             if model.page == .home {
                 IconButton(symbol: "arrow.clockwise") { model.refreshAll() }.help("Refresh and rescan")
             }
+            IconButton(symbol: "macwindow") {
+                NSApp.sendAction(#selector(AppDelegate.showMainWindow(_:)), to: nil, from: nil)
+            }
+            .help("Open Diskwise")
             IconButton(symbol: "ellipsis") { withAnimation(.easeOut(duration: 0.15)) { showingMenu.toggle() } }
                 .help("More")
         }
@@ -106,9 +110,58 @@ struct PanelView: View {
         return formatter.localizedString(for: date, relativeTo: Date())
     }
 
-    /// Progress while something runs, then the result for a few seconds.
-    @ViewBuilder
-    private var statusOverlay: some View {
+    /// Dropdown under the "more" button; a click anywhere else closes it.
+    private var menu: some View {
+        ZStack(alignment: .topTrailing) {
+            Color.black.opacity(0.001)
+                .onTapGesture { withAnimation(.easeOut(duration: 0.15)) { showingMenu = false } }
+            VStack(alignment: .leading, spacing: 2) {
+                MenuRow(symbol: "arrow.triangle.2.circlepath", title: model.scanning ? "Scanning..." : "Rescan disk") {
+                    showingMenu = false
+                    model.startScan()
+                }
+                MenuRow(symbol: model.alertsOn ? "checkmark.circle.fill" : "circle", title: "Alert when under \(Preferences.shared.alertThresholdGB) GB") {
+                    showingMenu = false
+                    model.alertsOn.toggle()
+                }
+                if !model.fullDiskAccess {
+                    MenuRow(symbol: "lock.open", title: "Grant Full Disk Access...") {
+                        showingMenu = false
+                        model.openFullDiskAccessSettings()
+                    }
+                }
+                MenuRow(symbol: "gearshape", title: "Open Storage settings") {
+                    showingMenu = false
+                    NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.settings.Storage")!)
+                }
+                Hairline().padding(.vertical, 3)
+                MenuRow(symbol: "macwindow", title: "Open Diskwise") {
+                    showingMenu = false
+                    NSApp.sendAction(#selector(AppDelegate.showMainWindow(_:)), to: nil, from: nil)
+                }
+                MenuRow(symbol: "gearshape", title: "Settings...") {
+                    showingMenu = false
+                    NSApp.sendAction(#selector(AppDelegate.showSettings(_:)), to: nil, from: nil)
+                }
+                MenuRow(symbol: "power", title: "Quit Diskwise") { NSApp.terminate(nil) }
+            }
+            .padding(5)
+            .frame(width: 230)
+            .background(RoundedRectangle(cornerRadius: 11, style: .continuous).fill(Theme.raised))
+            .overlay(RoundedRectangle(cornerRadius: 11, style: .continuous).strokeBorder(Theme.border))
+            .shadow(color: .black.opacity(0.45), radius: 14, y: 6)
+            .padding(.trailing, 12)
+            .padding(.top, 46)
+            .transition(.opacity.combined(with: .scale(scale: 0.96, anchor: .topTrailing)))
+        }
+    }
+}
+
+/// Progress while something runs, then the result for a few seconds.
+struct StatusOverlay: View {
+    @ObservedObject var model: AppModel
+
+    var body: some View {
         if let busy = model.busy {
             HStack(spacing: 8) {
                 Spinner(size: 12)
@@ -143,44 +196,6 @@ struct PanelView: View {
             .shadow(color: .black.opacity(0.35), radius: 10, y: 4)
             .padding(.bottom, 14)
             .transition(.opacity)
-        }
-    }
-
-    /// Dropdown under the "more" button; a click anywhere else closes it.
-    private var menu: some View {
-        ZStack(alignment: .topTrailing) {
-            Color.black.opacity(0.001)
-                .onTapGesture { withAnimation(.easeOut(duration: 0.15)) { showingMenu = false } }
-            VStack(alignment: .leading, spacing: 2) {
-                MenuRow(symbol: "arrow.triangle.2.circlepath", title: model.scanning ? "Scanning..." : "Rescan disk") {
-                    showingMenu = false
-                    model.startScan()
-                }
-                MenuRow(symbol: model.alertsOn ? "checkmark.circle.fill" : "circle", title: "Alert when under 10 GB") {
-                    showingMenu = false
-                    model.alertsOn.toggle()
-                }
-                if !model.fullDiskAccess {
-                    MenuRow(symbol: "lock.open", title: "Grant Full Disk Access...") {
-                        showingMenu = false
-                        model.openFullDiskAccessSettings()
-                    }
-                }
-                MenuRow(symbol: "gearshape", title: "Open Storage settings") {
-                    showingMenu = false
-                    NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.settings.Storage")!)
-                }
-                Hairline().padding(.vertical, 3)
-                MenuRow(symbol: "power", title: "Quit Diskwise") { NSApp.terminate(nil) }
-            }
-            .padding(5)
-            .frame(width: 230)
-            .background(RoundedRectangle(cornerRadius: 11, style: .continuous).fill(Theme.raised))
-            .overlay(RoundedRectangle(cornerRadius: 11, style: .continuous).strokeBorder(Theme.border))
-            .shadow(color: .black.opacity(0.45), radius: 14, y: 6)
-            .padding(.trailing, 12)
-            .padding(.top, 46)
-            .transition(.opacity.combined(with: .scale(scale: 0.96, anchor: .topTrailing)))
         }
     }
 }

@@ -110,13 +110,18 @@ struct Hairline: View {
 }
 
 /// Ring of short ticks filled with a glowing two-color gradient, like
-/// CleanMyMac's gauges.
-struct TickRing: View {
-    let progress: Double
+/// CleanMyMac's gauges. Animatable: changes to `progress` sweep smoothly.
+struct TickRing: View, Animatable {
+    var progress: Double
     let colors: (Color, Color)
     var ticks = 48
     var tickLength: CGFloat = 8
     var tickWidth: CGFloat = 3
+
+    var animatableData: Double {
+        get { progress }
+        set { progress = newValue }
+    }
 
     var body: some View {
         Canvas { ctx, size in
@@ -395,6 +400,7 @@ struct ListRow<Icon: View>: View {
     var warning: String? = nil
     /// nil shows a spinner.
     var size: Int64?
+    var showsSize = true
     /// Fills a faint bar behind the size, relative to the biggest row.
     var fraction: Double? = nil
     var actions: [RowAction] = []
@@ -432,6 +438,7 @@ struct ListRow<Icon: View>: View {
                     }
                 }
             }
+            if showsSize {
             VStack(alignment: .trailing, spacing: 3) {
                 if let size {
                     Text(Bytes.format(size)).font(Theme.number(12, .semibold)).foregroundStyle(Theme.text).monospacedDigit()
@@ -441,6 +448,7 @@ struct ListRow<Icon: View>: View {
                 if let fraction { CapacityBar(fraction: fraction, color: Theme.cyan.opacity(0.8), height: 3).frame(width: 54) }
             }
             .frame(minWidth: 62, alignment: .trailing)
+            }
             if onOpen != nil {
                 Image(systemName: "chevron.right").font(.system(size: 9, weight: .bold)).foregroundStyle(Theme.tertiary)
             }
@@ -458,7 +466,8 @@ struct ListRow<Icon: View>: View {
 /// (off-screen renders can't draw scroll views).
 struct ListArea<Content: View>: View {
     var live: Bool
-    var height: CGFloat = 330
+    /// nil fills the space it's given (window pages).
+    var height: CGFloat? = 330
     @ViewBuilder let content: () -> Content
 
     var body: some View {
@@ -467,14 +476,105 @@ struct ListArea<Content: View>: View {
                 ScrollView { VStack(spacing: 0) { content() }.padding(.vertical, 4) }
                     .scrollIndicators(.never)
             } else {
+                // Both bounds, so the frame takes the space offered instead of the list's full height.
                 VStack(spacing: 0) { content() }.padding(.vertical, 4)
                     .fixedSize(horizontal: false, vertical: true)
-                    .frame(height: height, alignment: .top)
+                    .frame(minHeight: 0, maxHeight: height ?? .infinity, alignment: .top)
                     .clipped()
             }
         }
         .frame(height: height)
+        .frame(minHeight: 0, maxHeight: height == nil ? .infinity : nil)
     }
+}
+
+/// A bright comet that circles the ring while a scan runs.
+struct ScanSweep: View {
+    var ticks = 90
+    var tickLength: CGFloat = 20
+    var tickWidth: CGFloat = 3.6
+    var color = Theme.cyan
+
+    var body: some View {
+        TimelineView(.animation) { context in
+            Canvas { ctx, size in
+                let head = context.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 1.6) / 1.6 * 2 * Double.pi
+                let center = CGPoint(x: size.width / 2, y: size.height / 2)
+                let outer = min(size.width, size.height) / 2 - tickWidth / 2
+                let inner = outer - tickLength
+                var glow = ctx
+                glow.addFilter(.shadow(color: color.opacity(0.7), radius: 5))
+                for i in 0..<ticks {
+                    let angle = 2 * Double.pi * Double(i) / Double(ticks)
+                    var behind = head - angle
+                    if behind < 0 { behind += 2 * Double.pi }
+                    let tail = 1.6
+                    guard behind < tail else { continue }
+                    let strength = 1 - behind / tail
+                    let a = CGFloat(angle - Double.pi / 2)
+                    var p = Path()
+                    p.move(to: CGPoint(x: center.x + inner * cos(a), y: center.y + inner * sin(a)))
+                    p.addLine(to: CGPoint(x: center.x + outer * cos(a), y: center.y + outer * sin(a)))
+                    glow.stroke(p, with: .color(color.opacity(strength)), style: StrokeStyle(lineWidth: tickWidth, lineCap: .round))
+                }
+            }
+        }
+    }
+}
+
+/// A byte count that rolls its digits when it changes.
+struct RollingBytes: View {
+    let bytes: Int64
+    var font: Font = Theme.number(30)
+    var color: Color = Theme.text
+
+    var body: some View {
+        Text(Bytes.format(bytes))
+            .font(font)
+            .foregroundStyle(color)
+            .monospacedDigit()
+            .contentTransition(.numericText(value: Double(bytes)))
+            .animation(.snappy(duration: 0.45), value: bytes)
+    }
+}
+
+/// Custom switch: a capsule with a sliding knob.
+struct PillToggle: View {
+    @Binding var isOn: Bool
+
+    var body: some View {
+        Capsule()
+            .fill(isOn ? Theme.cyan : Color.white.opacity(0.16))
+            .frame(width: 38, height: 22)
+            .overlay(alignment: isOn ? .trailing : .leading) {
+                Circle().fill(.white).frame(width: 18, height: 18).padding(2)
+                    .shadow(color: .black.opacity(0.25), radius: 2, y: 1)
+            }
+            .contentShape(Capsule())
+            .onTapGesture { withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) { isOn.toggle() } }
+            .accessibilityAddTraits(.isButton)
+            .accessibilityValue(isOn ? "On" : "Off")
+    }
+}
+
+/// Lifts slightly and brightens its border on hover.
+struct HoverLift: ViewModifier {
+    var radius: CGFloat = 14
+    @State private var hovering = false
+
+    func body(content: Content) -> some View {
+        content
+            .scaleEffect(hovering ? 1.015 : 1)
+            .overlay(RoundedRectangle(cornerRadius: radius, style: .continuous)
+                .strokeBorder(Theme.cyan.opacity(hovering ? 0.35 : 0)))
+            .shadow(color: .black.opacity(hovering ? 0.3 : 0), radius: 12, y: 6)
+            .animation(.easeOut(duration: 0.18), value: hovering)
+            .onHover { hovering = $0 }
+    }
+}
+
+extension View {
+    func hoverLift(radius: CGFloat = 14) -> some View { modifier(HoverLift(radius: radius)) }
 }
 
 struct EmptyNote: View {
@@ -493,6 +593,11 @@ struct EmptyNote: View {
         .frame(maxWidth: .infinity)
         .padding(.top, 70)
     }
+}
+
+/// Off-screen renders show animations in their final state.
+enum RenderMode {
+    static var snapshot = false
 }
 
 /// Path shown relative to home: "~/My Projects/site".

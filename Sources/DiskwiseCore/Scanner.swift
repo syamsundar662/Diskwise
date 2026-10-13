@@ -44,6 +44,7 @@ public struct FolderNode: Codable, Sendable, Hashable, Identifiable {
             children.remove(at: i)
         } else {
             freed = children[i].remove(at: Array(relative.dropFirst()))
+            children.sort { $0.size > $1.size }
         }
         size -= freed
         return freed
@@ -110,8 +111,11 @@ public enum Scanner {
         public static func standard(fullDiskAccess: Bool) -> Options {
             var o = Options()
             if !fullDiskAccess {
+                // Reading these asks for permission (app data, Apple Music, Photos) one prompt at a time.
                 o.excluded.formUnion(["Library/Containers", "Library/Group Containers", "Library/Mail",
-                                      "Library/Messages", "Library/Safari", "Library/Application Support/MobileSync"])
+                                      "Library/Messages", "Library/Safari", "Library/Application Support/MobileSync",
+                                      "Music/Music", "Music/iTunes", "Pictures/Photos Library.photoslibrary",
+                                      "Pictures/Photo Booth Library"])
             }
             return o
         }

@@ -5,6 +5,7 @@ import DiskwiseCore
 struct FilesPage: View {
     @ObservedObject var model: AppModel
     var live: Bool
+    var listHeight: CGFloat? = 380
     @State private var tab = Tab.large
     @State private var minimum: Int64 = 100 * Bytes.mb
 
@@ -50,7 +51,7 @@ struct FilesPage: View {
                     Text("Not opened in \(Downloads.oldDays) days").font(.system(size: 11)).foregroundStyle(Theme.secondary)
                 }
             }
-            ListArea(live: live, height: 380) {
+            ListArea(live: live, height: listHeight) {
                 if model.scan == nil {
                     EmptyNote(symbol: "magnifyingglass", title: "Waiting for the scan...",
                               detail: "Big files show up here once your home folder has been scanned.")
@@ -88,6 +89,7 @@ struct FilesPage: View {
 struct ProjectsPage: View {
     @ObservedObject var model: AppModel
     var live: Bool
+    var listHeight: CGFloat? = 380
     @State private var staleOnly = true
 
     var body: some View {
@@ -103,7 +105,7 @@ struct ProjectsPage: View {
                 Text("\(rows.count) folders, \(Bytes.format(rows.reduce(0) { $0 + $1.size }))")
                     .font(.system(size: 11)).foregroundStyle(Theme.secondary)
             }
-            ListArea(live: live, height: 380) {
+            ListArea(live: live, height: listHeight) {
                 if model.scan == nil {
                     EmptyNote(symbol: "magnifyingglass", title: "Waiting for the scan...")
                 } else if rows.isEmpty {

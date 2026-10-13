@@ -304,3 +304,29 @@ final class EmulatorTests: XCTestCase {
         XCTAssertFalse(home.exists(".android/avd/Pixel_7.avd/snapshots"))
     }
 }
+
+final class ExclusionTests: XCTestCase {
+    override func tearDown() { SafeDelete.excluded = [] }
+
+    func testExcludedFoldersAreNeverListedOrRemoved() {
+        let home = FakeHome()
+        home.file("Library/Caches/com.keep.me/x", bytes: 2000)
+        home.file("Library/Caches/com.spotify.client/x", bytes: 2000)
+        home.file("Library/Caches/Google/Chrome/Profile/x", bytes: 2000)
+        SafeDelete.excluded = [home.path + "/Library/Caches/com.keep.me", home.path + "/Library/Caches/Google/Chrome/Profile"]
+        let caches = CleanupCatalog.list(home: home.path).first { $0.id == "app-caches" }?.items.map(\.name) ?? []
+        XCTAssertEqual(caches, ["com.spotify.client"], "excluded folders and folders containing them are left out")
+        XCTAssertNotNil(SafeDelete.refusal(for: home.path + "/Library/Caches/com.keep.me/x", home: home.path))
+        XCTAssertNotNil(SafeDelete.refusal(for: home.path + "/Library/Caches/Google", home: home.path))
+        XCTAssertNil(SafeDelete.refusal(for: home.path + "/Library/Caches/com.spotify.client", home: home.path))
+    }
+
+    func testRemoveKeepsChildrenSorted() {
+        var root = FolderNode(name: "/h", size: 300, isDirectory: true, children: [
+            FolderNode(name: "a", size: 200, isDirectory: true, children: [FolderNode(name: "x", size: 190, isDirectory: false)]),
+            FolderNode(name: "b", size: 100, isDirectory: true),
+        ])
+        _ = root.remove(at: ["a", "x"])
+        XCTAssertEqual(root.children.map(\.name), ["b", "a"])
+    }
+}

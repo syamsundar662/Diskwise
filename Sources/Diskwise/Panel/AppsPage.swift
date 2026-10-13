@@ -5,6 +5,9 @@ import DiskwiseCore
 struct AppsPage: View {
     @ObservedObject var model: AppModel
     var live: Bool
+    var listHeight: CGFloat? = 400
+    /// The window shows the detail itself; the panel navigates.
+    var onOpen: ((InstalledApp) -> Void)? = nil
     @State private var order = Order.size
 
     enum Order: Hashable { case size, lastUsed, name }
@@ -29,7 +32,7 @@ struct AppsPage: View {
                 Text("\(apps.count) apps, \(Bytes.format(apps.compactMap(\.size).reduce(0, +)))")
                     .font(.system(size: 11)).foregroundStyle(Theme.secondary)
             }
-            ListArea(live: live, height: 400) {
+            ListArea(live: live, height: listHeight) {
                 ForEach(apps) { app in
                     ListRow(icon: { FileIcon(path: app.path, size: 26) },
                             title: app.name,
@@ -37,7 +40,7 @@ struct AppsPage: View {
                             subtitle: app.lastUsed.map { "Opened \(ageText($0))" } ?? "Never opened",
                             size: app.size,
                             fraction: app.size.map { Double($0) / Double(max(biggest, 1)) },
-                            onOpen: { model.openApp(app) })
+                            onOpen: { if let onOpen { onOpen(app) } else { model.openApp(app) } })
                 }
             }
             .padding(.horizontal, 6)
@@ -51,6 +54,7 @@ struct AppDetailPage: View {
     @ObservedObject var model: AppModel
     let path: String
     var live: Bool
+    var listHeight: CGFloat? = 280
 
     var body: some View {
         if let app = model.apps.first(where: { $0.path == path }) {
@@ -86,7 +90,7 @@ struct AppDetailPage: View {
                 if model.leftoversLoading { Spinner(size: 10) }
                 Spacer()
             }
-            ListArea(live: live, height: 280) {
+            ListArea(live: live, height: listHeight) {
                 if !model.leftoversLoading && model.leftovers.isEmpty {
                     EmptyNote(symbol: "checkmark.seal", title: "No leftovers found", detail: "Only the app itself will be removed.")
                 }

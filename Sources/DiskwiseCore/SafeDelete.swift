@@ -22,6 +22,22 @@ public enum SafeDelete {
         "Library/Photos", ".claude", ".aws",
     ]
 
+    private static let lock = NSLock()
+    private static var excludedPaths: [String] = []
+
+    /// Folders the user asked never to touch (Settings > Cleanup). Anything
+    /// inside them, or containing them, is refused.
+    public static var excluded: [String] {
+        get { lock.lock(); defer { lock.unlock() }; return excludedPaths }
+        set { lock.lock(); excludedPaths = newValue.map { ($0 as NSString).standardizingPath }; lock.unlock() }
+    }
+
+    /// True when removing `path` would touch an excluded folder.
+    public static func isExcluded(_ path: String) -> Bool {
+        let path = (path as NSString).standardizingPath
+        return excluded.contains { path == $0 || path.hasPrefix($0 + "/") || $0.hasPrefix(path + "/") }
+    }
+
     /// nil when `path` may be removed, otherwise the reason it may not.
     public static func refusal(for path: String, home: String = NSHomeDirectory()) -> String? {
         guard path.hasPrefix("/") else { return "not an absolute path" }
@@ -36,6 +52,7 @@ public enum SafeDelete {
         let relative = String(full.dropFirst(root.count + 1))
         if protectedFolders.contains(relative) { return "a protected folder" }
         if privateFolders.contains(where: { relative == $0 || relative.hasPrefix($0 + "/") }) { return "private data" }
+        if isExcluded(full) || isExcluded(standard) { return "in a folder you excluded" }
         return nil
     }
 

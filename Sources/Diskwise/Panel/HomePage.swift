@@ -163,7 +163,7 @@ struct HomePage: View {
             HStack(spacing: 6) {
                 Image(systemName: model.alertsOn ? "bell.fill" : "bell.slash").font(.system(size: 10))
                     .foregroundStyle(model.alertsOn ? Theme.cyan : Theme.tertiary)
-                Text(model.alertsOn ? "Notifies you when less than 10 GB is left" : "Low space alerts are off")
+                Text(model.alertsOn ? "Notifies you when less than \(Preferences.shared.alertThresholdGB) GB is left" : "Low space alerts are off")
                     .font(.system(size: 10.5)).foregroundStyle(Theme.secondary)
                 Spacer()
                 Button(model.alertsOn ? "Turn off" : "Turn on") { model.alertsOn.toggle() }
