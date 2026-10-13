@@ -371,7 +371,7 @@ struct ClassicCare: View {
                 CareSidebar().background(Color.black.opacity(0.12))
                     .overlay(alignment: .trailing) { Rectangle().fill(.white.opacity(0.08)).frame(width: 1) }
                 HStack(spacing: 46) {
-                    HeroArt(name: "hero-1-classic", size: 330, glow: Color(0.45, 0.45, 1.0))
+                    HeroArt(name: "disc-care", size: 340, glow: Color(0.45, 0.45, 1.0))
                     VStack(alignment: .leading, spacing: 14) {
                         Text("Smart Care").font(.system(size: 44, weight: .medium)).foregroundStyle(.white)
                         Text(model.careSubtitle).font(.system(size: 16)).foregroundStyle(.white.opacity(0.75)).frame(width: 330, alignment: .leading)
