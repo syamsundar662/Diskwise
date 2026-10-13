@@ -209,11 +209,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         panel.hide()
     }
 
-    /// True when macOS opened the app as a login item.
+    /// True when macOS opened the app as a login item. The launch event says so for
+    /// classic login items; SMAppService launches may not carry it, so also treat a
+    /// launch within two minutes of the login session starting as one.
     private static func launchedAtLogin() -> Bool {
-        guard let event = NSAppleEventManager.shared().currentAppleEvent else { return false }
-        return event.eventID == kAEOpenApplication
-            && event.paramDescriptor(forKeyword: keyAEPropData)?.enumCodeValue == keyAELaunchedAsLogInItem
+        if let event = NSAppleEventManager.shared().currentAppleEvent, event.eventID == kAEOpenApplication,
+           event.paramDescriptor(forKeyword: keyAEPropData)?.enumCodeValue == keyAELaunchedAsLogInItem {
+            return true
+        }
+        guard LoginItem.isEnabled,
+              let session = NSRunningApplication.runningApplications(withBundleIdentifier: "com.apple.loginwindow").first,
+              let started = processStart(session.processIdentifier) else { return false }
+        return Date().timeIntervalSince(started) < 120
+    }
+
+    /// When a process started (launchDate is nil for processes LaunchServices didn't start).
+    private static func processStart(_ pid: pid_t) -> Date? {
+        var info = kinfo_proc()
+        var size = MemoryLayout<kinfo_proc>.stride
+        var mib: [Int32] = [CTL_KERN, KERN_PROC, KERN_PROC_PID, pid]
+        guard sysctl(&mib, 4, &info, &size, nil, 0) == 0, size > 0 else { return nil }
+        let start = info.kp_proc.p_un.__p_starttime
+        return Date(timeIntervalSince1970: Double(start.tv_sec) + Double(start.tv_usec) / 1_000_000)
     }
 }
 
