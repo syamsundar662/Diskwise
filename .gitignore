@@ -6,3 +6,4 @@ dist/
 .tools/
 DerivedData/
 .DS_Store
+*.blend1
