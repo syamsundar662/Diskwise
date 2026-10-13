@@ -99,6 +99,7 @@ struct AppDetailPage: View {
                             toggle: { toggle(item.path) },
                             icon: { FileIcon(path: item.path, size: 18) },
                             title: item.name,
+                            safety: SafetyAdvisor.verdict(forLeftoverKind: item.kind),
                             subtitle: item.kind,
                             size: item.size,
                             actions: [RowAction(symbol: "magnifyingglass", help: "Show in Finder") { model.reveal(item.path) }])

@@ -330,3 +330,41 @@ final class ExclusionTests: XCTestCase {
         XCTAssertEqual(root.children.map(\.name), ["b", "a"])
     }
 }
+
+final class SafetyTests: XCTestCase {
+    override func tearDown() { SafeDelete.excluded = [] }
+
+    func testVerdicts() {
+        let home = FakeHome()
+        home.file("Library/Caches/com.spotify.client/x")
+        home.file("Projects/site/package.json")
+        home.file("Projects/site/node_modules/react/index.js")
+        home.file("Projects/site/src/app.js")
+        home.file("Documents/tax.pdf")
+        func safety(_ relative: String) -> Safety { SafetyAdvisor.verdict(for: home.path + "/" + relative, home: home.path).safety }
+
+        XCTAssertEqual(safety("Library/Caches/com.spotify.client"), .safe)
+        XCTAssertEqual(safety(".npm/_cacache"), .safe)
+        XCTAssertEqual(safety("Projects/site/node_modules"), .safe)
+        XCTAssertEqual(safety("Projects/site/node_modules/react/index.js"), .safe)
+        XCTAssertEqual(safety("Library/Developer/CoreSimulator/Devices/ABC"), .review)
+        XCTAssertEqual(safety("Documents/tax.pdf"), .review)
+        XCTAssertEqual(safety("Projects/site/src"), .review)
+        XCTAssertEqual(safety("Library/Application Support/SomeApp"), .unsafe)
+        XCTAssertEqual(safety("Library/Application Support/Code/Cache"), .safe, "an Electron cache inside app data")
+        XCTAssertEqual(safety("Library/Caches"), .safe, "the caches folder is covered by app caches")
+        XCTAssertEqual(safety("Library"), .unsafe)
+        XCTAssertEqual(safety(".ssh/id_rsa"), .unsafe)
+        XCTAssertEqual(safety("Projects/site/.git"), .unsafe)
+        XCTAssertEqual(SafetyAdvisor.verdict(for: "/etc/hosts", home: home.path).safety, .unsafe)
+        SafeDelete.excluded = [home.path + "/Documents"]
+        XCTAssertEqual(safety("Documents/tax.pdf"), .unsafe)
+    }
+
+    func testGroupsAndLeftovers() {
+        XCTAssertEqual(SafetyAdvisor.verdict(forGroup: "npm").safety, .safe)
+        XCTAssertEqual(SafetyAdvisor.verdict(forGroup: "models").safety, .review)
+        XCTAssertEqual(SafetyAdvisor.verdict(forLeftoverKind: "Caches").safety, .safe)
+        XCTAssertEqual(SafetyAdvisor.verdict(forLeftoverKind: "Application Support").safety, .review)
+    }
+}

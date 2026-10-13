@@ -31,7 +31,7 @@ struct CleanupPage: View {
                 ForEach(model.groups) { group in
                     groupRow(group)
                     if expanded.contains(group.id) {
-                        ForEach(group.items.sorted { ($0.size ?? 0) > ($1.size ?? 0) }) { item in itemRow(item) }
+                        ForEach(group.items.sorted { ($0.size ?? 0) > ($1.size ?? 0) }) { item in itemRow(item, in: group) }
                     }
                 }
                 trashRow
@@ -57,6 +57,7 @@ struct CleanupPage: View {
                 HStack(spacing: 6) {
                     Text(group.title).font(.system(size: 12, weight: .semibold)).foregroundStyle(Theme.text)
                     Text("\(group.items.count)").font(.system(size: 10, weight: .medium)).foregroundStyle(Theme.tertiary)
+                    SafetyBadge(verdict: group.verdict)
                 }
                 Text(group.detail).font(.system(size: 10.5)).foregroundStyle(Theme.secondary).lineLimit(1)
             }
@@ -79,10 +80,11 @@ struct CleanupPage: View {
         }
     }
 
-    private func itemRow(_ item: CleanupItem) -> some View {
+    private func itemRow(_ item: CleanupItem, in group: CleanupGroup) -> some View {
         ListRow(checked: model.isSelected(item), toggle: { model.toggle(item) }, checkDisabled: item.inUseBy != nil,
                 icon: { FileIcon(path: item.path, size: 18) },
                 title: item.name,
+                safety: group.verdict,
                 subtitle: item.source == item.name ? shortPath(item.path) : item.source,
                 warning: item.inUseBy.map { "\($0) is open. Quit it to clean this." },
                 size: item.size,

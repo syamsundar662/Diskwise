@@ -16,6 +16,9 @@ Options (all optional):
   --samples n       Cycles samples (default 256)
   --out path        PNG to write
   --blend path      also save the scene here
+  --tilt-grid dir   instead of one still, render the disc turned toward every point of a
+                    7 x 5 grid (yaw -15..15, pitch -10..10 degrees) for cursor tracking:
+                    dir/tilt_<yaw index>_<pitch index>.png, same camera for every frame
 """
 
 import math
@@ -45,6 +48,9 @@ SIZE = int(option("size", "1024"))
 SAMPLES = int(option("samples", "256"))
 OUT = option("out", "/tmp/disc.png")
 BLEND = option("blend", None)
+TILT_DIR = option("tilt-grid", None)
+YAWS = [-15, -10, -5, 0, 5, 10, 15]
+PITCHES = [-10, -5, 0, 5, 10]
 TICKS = 48
 
 # MARK: Scene
@@ -72,10 +78,14 @@ except TypeError:
 try:
     prefs = bpy.context.preferences.addons["cycles"].preferences
     prefs.compute_device_type = "METAL"
-    prefs.get_devices()
+    if hasattr(prefs, "refresh_devices"):
+        prefs.refresh_devices()
+    else:
+        prefs.get_devices()
     for device in prefs.devices:
         device.use = True
     scene.cycles.device = "GPU"
+    print("Diskwise: devices", [(d.name, d.type, d.use) for d in prefs.devices])
 except Exception as error:  # CPU still works, just slower
     print("Diskwise: GPU not available, rendering on CPU:", error)
 
@@ -123,8 +133,8 @@ glass = absorbing(principled("Glass", **{
 }), TINT, 1.6)
 # Dark glossy glass with a soft inner glow: the lights only add highlights, not a wash.
 face = principled("Face", **{
-    "Base Color": mix(TINT, (0, 0, 0, 1), 0.8), "Roughness": 0.04, "IOR": 1.5,
-    "Coat Weight": 1.0, "Coat Roughness": 0.0,
+    "Base Color": mix(TINT, (0, 0, 0, 1), 0.8), "Roughness": 0.18, "IOR": 1.5,
+    "Coat Weight": 0.6, "Coat Roughness": 0.14,
     "Emission Color": TINT, "Emission Strength": 0.16,
 })
 frosted = principled("Frosted", **{
@@ -250,9 +260,9 @@ def strip(name, location, scale, strength):
     plane.visible_shadow = False
 
 
-strip("StripLeft", (-3.2, -1.5, 1.2), (0.35, 4.0, 1), 7)
-strip("StripTop", (0.4, -0.6, 3.6), (4.0, 0.3, 1), 5)
-strip("StripRight", (3.0, -2.2, -0.4), (0.25, 3.0, 1), 3)
+strip("StripLeft", (-3.2, -1.5, 1.2), (0.35, 4.0, 1), 6)
+strip("StripTop", (0.4, -0.6, 3.6), (4.0, 0.3, 1), 4)
+strip("StripRight", (3.0, -2.2, -0.4), (0.25, 3.0, 1), 2)
 
 # World: a soft vertical gradient the glass can refract and reflect (the camera sees transparency).
 world = bpy.data.worlds.new("World")
@@ -293,16 +303,32 @@ def projected_bounds():
 
 
 x0, x1, y0, y1 = projected_bounds()
-cam_data.lens *= 0.80 / max(x1 - x0, y1 - y0)
+# Leave room for the disc to turn when rendering the tilt grid.
+cam_data.lens *= (0.74 if TILT_DIR else 0.80) / max(x1 - x0, y1 - y0)
 x0, x1, y0, y1 = projected_bounds()
 cam_data.shift_x += (x0 + x1) / 2 - 0.5
 cam_data.shift_y += (y0 + y1) / 2 - 0.5
 
 # MARK: Render
 
-scene.render.filepath = OUT
-bpy.ops.render.render(write_still=True)
-print("Diskwise: rendered", OUT)
+if TILT_DIR:
+    import os
+    from mathutils import Matrix
+    os.makedirs(TILT_DIR, exist_ok=True)
+    neutral = root.matrix_world.copy()
+    for yi, yaw in enumerate(YAWS):
+        for pi, pitch in enumerate(PITCHES):
+            # Turn around the screen's vertical axis (world Z) and horizontal axis (world X):
+            # positive yaw faces the disc right, positive pitch faces it up.
+            root.matrix_world = Matrix.Rotation(math.radians(yaw), 4, "Z") @ Matrix.Rotation(math.radians(-pitch), 4, "X") @ neutral
+            scene.render.filepath = os.path.join(TILT_DIR, f"tilt_{yi}_{pi}.png")
+            bpy.ops.render.render(write_still=True)
+            print("Diskwise: rendered", scene.render.filepath)
+    root.matrix_world = neutral
+else:
+    scene.render.filepath = OUT
+    bpy.ops.render.render(write_still=True)
+    print("Diskwise: rendered", OUT)
 if BLEND:
     bpy.ops.wm.save_as_mainfile(filepath=BLEND)
     print("Diskwise: saved", BLEND)

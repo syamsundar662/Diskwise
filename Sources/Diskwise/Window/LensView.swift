@@ -18,15 +18,8 @@ struct LensView: View {
 
     var body: some View {
         WindowPage(title: "Space Lens", subtitle: "Your home folder by size. Click a ring to go inside, the center to go back.") {
-            HStack(spacing: 8) {
-                if let disk = model.disk {
-                    Text("\(Bytes.format(disk.available)) free").font(.system(size: 11.5, weight: .semibold))
-                        .foregroundStyle(Theme.text).padding(.horizontal, 12).padding(.vertical, 6)
-                        .background(Capsule().fill(Color.white.opacity(0.09)))
-                }
-                Button(model.scanning ? "Scanning..." : "Rescan") { model.startScan() }
-                    .buttonStyle(PillButtonStyle()).disabled(model.scanning)
-            }
+            Button(model.scanning ? "Scanning..." : "Rescan") { model.startScan() }
+                .buttonStyle(PillButtonStyle()).disabled(model.scanning)
         } content: {
             if let root {
                 HStack(alignment: .center, spacing: 26) {
@@ -140,8 +133,9 @@ struct LensView: View {
 
     private func row(_ child: FolderNode, index: Int, parent: FolderNode) -> some View {
         let full = ([home] + path + [child.name]).joined(separator: "/")
+        let verdict = SafetyAdvisor.verdict(for: full)
         var actions = [RowAction(symbol: "magnifyingglass", help: "Show in Finder") { model.reveal(full) }]
-        if SafeDelete.refusal(for: full) == nil {
+        if SafeDelete.refusal(for: full) == nil, verdict.safety != .unsafe {
             actions.append(RowAction(symbol: "trash", help: "Move to Trash", destructive: true) {
                 model.confirmTrash([full], sizes: [child.size])
             })
@@ -149,6 +143,7 @@ struct LensView: View {
         let canOpen = child.isDirectory && !child.children.isEmpty
         return ListRow(icon: { RoundedRectangle(cornerRadius: 3).fill(Self.colors[index % Self.colors.count]).frame(width: 10, height: 10) },
                        title: child.name,
+                       safety: verdict,
                        subtitle: "\(Int((Double(child.size) / Double(max(parent.size, 1)) * 100).rounded()))%",
                        size: child.size,
                        actions: actions,

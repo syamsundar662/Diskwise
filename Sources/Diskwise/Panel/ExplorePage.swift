@@ -80,8 +80,9 @@ struct ExplorePage: View {
     private func row(_ child: FolderNode, parent: FolderNode) -> some View {
         let childParts = parts + [child.name]
         let full = path(childParts)
+        let verdict = SafetyAdvisor.verdict(for: full)
         var actions = [RowAction(symbol: "magnifyingglass", help: "Show in Finder") { model.reveal(full) }]
-        if SafeDelete.refusal(for: full) == nil {
+        if SafeDelete.refusal(for: full) == nil, verdict.safety != .unsafe {
             actions.append(RowAction(symbol: "trash", help: "Move to Trash", destructive: true) {
                 model.confirmTrash([full], sizes: [child.size])
             })
@@ -89,6 +90,7 @@ struct ExplorePage: View {
         let canOpen = child.isDirectory && (!child.children.isEmpty || child.restCount > 0)
         return ListRow(icon: { FileIcon(path: full, size: 20) },
                        title: child.name,
+                       safety: verdict,
                        subtitle: child.isDirectory ? itemsText(child) : "File",
                        size: child.size,
                        fraction: Double(child.size) / Double(max(parent.size, 1)),

@@ -378,6 +378,41 @@ struct SegmentedTabs<ID: Hashable>: View {
     }
 }
 
+/// "Safe to delete", "Review first" or "Not safe to delete", with the reason as a tooltip.
+struct SafetyBadge: View {
+    let verdict: SafetyVerdict
+
+    private var color: Color {
+        switch verdict.safety {
+        case .safe: return Theme.green
+        case .review: return Theme.amber
+        case .unsafe: return Theme.red
+        }
+    }
+
+    private var symbol: String {
+        switch verdict.safety {
+        case .safe: return "checkmark.shield.fill"
+        case .review: return "exclamationmark.triangle.fill"
+        case .unsafe: return "xmark.octagon.fill"
+        }
+    }
+
+    var body: some View {
+        HStack(spacing: 3) {
+            Image(systemName: symbol).font(.system(size: 8.5, weight: .bold))
+            Text(verdict.safety.title).font(.system(size: 9.5, weight: .semibold))
+        }
+        .foregroundStyle(color)
+        .padding(.horizontal, 6)
+        .padding(.vertical, 2)
+        .background(Capsule().fill(color.opacity(0.16)))
+        .fixedSize()
+        .help(verdict.reason)
+        .accessibilityLabel("\(verdict.safety.title). \(verdict.reason)")
+    }
+}
+
 struct RowAction: Identifiable {
     let symbol: String
     let help: String
@@ -396,6 +431,7 @@ struct ListRow<Icon: View>: View {
     @ViewBuilder let icon: () -> Icon
     let title: String
     var badge: String? = nil
+    var safety: SafetyVerdict? = nil
     var subtitle: String? = nil
     var warning: String? = nil
     /// nil shows a spinner.
@@ -422,10 +458,13 @@ struct ListRow<Icon: View>: View {
                             .fixedSize()
                     }
                 }
-                if let warning {
-                    Text(warning).font(.system(size: 10.5)).foregroundStyle(Theme.amber).lineLimit(1)
-                } else if let subtitle {
-                    Text(subtitle).font(.system(size: 10.5)).foregroundStyle(Theme.tertiary).lineLimit(1).truncationMode(.middle)
+                HStack(spacing: 6) {
+                    if let safety { SafetyBadge(verdict: safety) }
+                    if let warning {
+                        Text(warning).font(.system(size: 10.5)).foregroundStyle(Theme.amber).lineLimit(1)
+                    } else if let subtitle {
+                        Text(subtitle).font(.system(size: 10.5)).foregroundStyle(Theme.tertiary).lineLimit(1).truncationMode(.middle)
+                    }
                 }
             }
             Spacer(minLength: 6)

@@ -31,45 +31,6 @@ enum Art {
     }
 }
 
-/// The 3D hero object: floats gently with a breathing glow, and a light circles it while scanning.
-struct HeroArt: View {
-    let name: String
-    var size: CGFloat
-    var glow: Color
-    var scanning = false
-    @State private var floating = false
-
-    var body: some View {
-        ZStack {
-            Ellipse().fill(glow.opacity(0.5)).frame(width: size * 0.78, height: size * 0.2)
-                .blur(radius: size * 0.09).offset(y: size * 0.44)
-                .scaleEffect(floating ? 0.9 : 1)
-            Circle().fill(glow.opacity(scanning ? 0.4 : 0.24)).frame(width: size * 0.9).blur(radius: size * 0.16)
-                .scaleEffect(floating ? 1.06 : 0.96)
-            if scanning {
-                Circle()
-                    .trim(from: 0, to: 0.28)
-                    .stroke(AngularGradient(colors: [glow.opacity(0), glow, .white], center: .center),
-                            style: StrokeStyle(lineWidth: 4, lineCap: .round))
-                    .frame(width: size * 1.06, height: size * 1.06)
-                    .rotationEffect(.degrees(floating ? 360 : 0))
-                    .blur(radius: 0.6)
-                    .transition(.opacity)
-            }
-            if let image = Art.image(name) {
-                Image(nsImage: image).resizable().interpolation(.high).aspectRatio(contentMode: .fit)
-                    .offset(y: floating ? -7 : 7)
-            }
-        }
-        .frame(width: size, height: size)
-        .onAppear {
-            guard !RenderMode.snapshot else { return }
-            withAnimation(.easeInOut(duration: 3.2).repeatForever(autoreverses: true)) { floating = true }
-        }
-        .animation(.easeInOut(duration: 0.4), value: scanning)
-    }
-}
-
 /// A small 3D icon, falling back to a drawn glossy chip when its art is missing.
 struct Icon3D: View {
     let name: String
