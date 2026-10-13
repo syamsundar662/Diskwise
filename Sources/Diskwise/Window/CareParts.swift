@@ -78,7 +78,6 @@ struct RoundActionButton: View {
     var size: CGFloat = 108
     let action: () -> Void
     @State private var hovering = false
-    @State private var breathing = false
 
     var body: some View {
         Button(action: action) {
@@ -86,7 +85,7 @@ struct RoundActionButton: View {
                 // Fading a blurred glow is cheap; resizing it would blur it again every frame.
                 Circle().fill(tint.opacity(0.65)).blur(radius: 26)
                     .frame(width: size * 1.25, height: size * 1.25)
-                    .opacity(hovering ? 1 : breathing ? 0.85 : 0.55)
+                    .opacity(hovering ? 1 : 0.7)
                 Circle().fill(RadialGradient(colors: [tint.mix(.white, 0.38), tint, tint.mix(.black, 0.28)],
                                              center: UnitPoint(x: 0.4, y: 0.25), startRadius: 0, endRadius: size * 0.7))
                 Circle().strokeBorder(.white.opacity(0.75), lineWidth: 2.5)
@@ -112,10 +111,6 @@ struct RoundActionButton: View {
         .buttonStyle(PressableStyle())
         .onHover { hovering = $0 }
         .animation(.spring(response: 0.3, dampingFraction: 0.7), value: hovering)
-        .onAppear {
-            guard !RenderMode.snapshot else { return }
-            withAnimation(.easeInOut(duration: 2.2).repeatForever(autoreverses: true)) { breathing = true }
-        }
         .disabled(progress != nil)
         .accessibilityLabel(progress == nil ? title : "Scanning, \(Int((progress ?? 0) * 100)) percent")
     }

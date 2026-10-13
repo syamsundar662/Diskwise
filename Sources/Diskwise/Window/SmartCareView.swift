@@ -6,9 +6,6 @@ import DiskwiseCore
 struct SmartCareView: View {
     @ObservedObject var model: AppModel
     @State private var shown = RenderMode.snapshot
-    /// Hands the cursor to the disc's layers directly, so moving the mouse doesn't re-render this page.
-    @State private var motion = DiscMotion()
-    @State private var heroCenter = CGPoint(x: 300, y: 300)
     @State private var ripples = 0
     @State private var bursts = 0
     @State private var bounces = 0
@@ -43,19 +40,14 @@ struct SmartCareView: View {
 
     var body: some View {
         ZStack {
-            // A soft light that follows the cursor.
-            if !RenderMode.snapshot {
-                PointerLight(motion: motion, color: NavItem.dashboard.gradient.glow)
-                    .allowsHitTesting(false)
-            }
             HStack(spacing: 50) {
                 ZStack {
                     discGlow
                     Group {
                         if RenderMode.snapshot {
-                            Image(nsImage: Art.image("disc-tilt-3-2") ?? NSImage()).resizable().aspectRatio(contentMode: .fit)
+                            Image(nsImage: Art.image("disc-care") ?? NSImage()).resizable().aspectRatio(contentMode: .fit)
                         } else {
-                            DiscView(motion: motion, scanning: phase == .scanning, celebrations: bursts, bounces: bounces)
+                            HeroDiscView(scanning: phase == .scanning, celebrations: bursts, bounces: bounces)
                         }
                     }
                     .frame(width: 340, height: 340)
@@ -63,11 +55,7 @@ struct SmartCareView: View {
                     .onTapGesture { bounces += 1 }
                     CompletionBurst(tint: NavItem.dashboard.gradient.glow, trigger: bursts)
                 }
-                .background(GeometryReader { geo in
-                    Color.clear
-                        .onAppear { heroCenter = CGPoint(x: geo.frame(in: .named("care")).midX, y: geo.frame(in: .named("care")).midY) }
-                        .onChange(of: geo.frame(in: .named("care"))) { _, frame in heroCenter = CGPoint(x: frame.midX, y: frame.midY) }
-                })
+
                 VStack(alignment: .leading, spacing: 14) {
                     Text(title)
                         .font(.system(size: 44, weight: .medium))
@@ -117,16 +105,6 @@ struct SmartCareView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .coordinateSpace(name: "care")
-        .contentShape(Rectangle())
-        .onContinuousHover(coordinateSpace: .named("care")) { hover in
-            switch hover {
-            case .active(let point):
-                motion.pointer(point, heroCenter: heroCenter)
-            case .ended:
-                motion.pointer(nil, heroCenter: heroCenter)
-            }
-        }
         .onChange(of: phase) { old, new in
             guard old == .scanning, new == .done else { return }
             // The scan finished: spin and pop the disc, burst, then bring the results in again.

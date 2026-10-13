@@ -37,7 +37,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             .sink { [weak self] _ in self?.updateStatusItem() }.store(in: &changes)
 
         model.start()
-        DiscFrames.shared.load()
         _ = Updater.shared  // starts Sparkle's scheduled update checks
         updateStatusItem()
         // DISKWISE_AUTOSCAN=1 starts a Smart Care scan right away (for checking scan performance).
