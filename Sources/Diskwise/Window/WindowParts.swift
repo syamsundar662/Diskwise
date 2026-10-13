@@ -4,55 +4,93 @@ import DiskwiseCore
 // Pieces shared by the main window's pages.
 
 enum NavItem: String, CaseIterable, Identifiable {
-    case dashboard = "Dashboard"
-    case cleanup = "Smart Cleanup"
+    case dashboard = "Smart Care"
+    case cleanup = "Cleanup"
     case lens = "Space Lens"
     case files = "Large & Old Files"
     case projects = "Project Junk"
     case apps = "Uninstaller"
+    case activity = "Activity"
 
     var id: String { rawValue }
 
+    /// Sections in the top of the sidebar; Activity sits at the bottom with Settings.
+    static let main: [NavItem] = [.dashboard, .cleanup, .lens, .files, .projects, .apps]
+
     var symbol: String {
         switch self {
-        case .dashboard: return "gauge.with.dots.needle.67percent"
+        case .dashboard: return "sparkles.rectangle.stack.fill"
         case .cleanup: return "sparkles"
         case .lens: return "chart.pie.fill"
         case .files: return "doc.fill"
         case .projects: return "hammer.fill"
         case .apps: return "square.grid.2x2.fill"
+        case .activity: return "chart.line.uptrend.xyaxis"
+        }
+    }
+
+    /// 3D icon in Resources/Art.
+    var icon: String {
+        switch self {
+        case .dashboard: return "icon-smartcare"
+        case .cleanup: return "icon-cleanup"
+        case .lens: return "icon-lens"
+        case .files: return "icon-files"
+        case .projects: return "icon-projects"
+        case .apps: return "icon-apps"
+        case .activity: return "icon-activity"
         }
     }
 
     var color: Color {
         switch self {
-        case .dashboard: return Theme.cyan
-        case .cleanup: return Theme.teal
-        case .lens: return Theme.blue
-        case .files: return Theme.pink
-        case .projects: return Theme.amber
-        case .apps: return Theme.violet
+        case .dashboard: return Color(0.45, 0.55, 1.0)
+        case .cleanup: return Color(0.25, 0.85, 0.6)
+        case .lens: return Color(0.4, 0.7, 1.0)
+        case .files: return Color(1.0, 0.45, 0.75)
+        case .projects: return Color(1.0, 0.7, 0.3)
+        case .apps: return Color(0.7, 0.55, 1.0)
+        case .activity: return Color(0.4, 0.8, 1.0)
         }
     }
 
-    /// Cmd+1 to Cmd+6.
+    /// Each section has its own background, like CleanMyMac's modules.
+    var gradient: (top: Color, bottom: Color, glow: Color) {
+        switch self {
+        case .dashboard: return (Color(0.22, 0.30, 0.92), Color(0.16, 0.10, 0.52), Color(0.55, 0.45, 1.0))
+        case .cleanup: return (Color(0.06, 0.48, 0.36), Color(0.02, 0.17, 0.15), Color(0.35, 0.95, 0.65))
+        case .lens: return (Color(0.10, 0.36, 0.80), Color(0.03, 0.10, 0.30), Color(0.40, 0.75, 1.0))
+        case .files: return (Color(0.58, 0.12, 0.44), Color(0.20, 0.03, 0.20), Color(1.0, 0.45, 0.75))
+        case .projects: return (Color(0.62, 0.34, 0.08), Color(0.22, 0.09, 0.03), Color(1.0, 0.70, 0.30))
+        case .apps: return (Color(0.40, 0.17, 0.72), Color(0.13, 0.05, 0.31), Color(0.70, 0.50, 1.0))
+        case .activity: return (Color(0.08, 0.38, 0.62), Color(0.03, 0.10, 0.22), Color(0.40, 0.80, 1.0))
+        }
+    }
+
+    /// Cmd+1 to Cmd+7.
     var shortcut: Character { Character("\((NavItem.allCases.firstIndex(of: self) ?? 0) + 1)") }
 }
 
-/// The window background: Midnight gradient with a soft glow.
-struct WindowBackdrop: View {
-    var glow = false
+/// The background of a section: its gradient with a soft glow near the top right.
+struct SectionBackdrop: View {
+    let section: NavItem
 
     var body: some View {
+        let colors = section.gradient
         ZStack {
-            LinearGradient(colors: [Theme.glassTop, Theme.glassBottom], startPoint: .topLeading, endPoint: .bottomTrailing)
-            RadialGradient(colors: [Theme.cyan.opacity(glow ? 0.20 : 0.08), .clear],
-                           center: glow ? UnitPoint(x: 0.55, y: 0.42) : UnitPoint(x: 0.25, y: 0), startRadius: 0,
-                           endRadius: glow ? 440 : 560)
-                .animation(.easeInOut(duration: 0.6), value: glow)
+            LinearGradient(colors: [colors.top, colors.bottom], startPoint: .topLeading, endPoint: .bottomTrailing)
+            RadialGradient(colors: [colors.glow.opacity(0.42), .clear], center: UnitPoint(x: 0.75, y: 0.12),
+                           startRadius: 0, endRadius: 560)
         }
         .ignoresSafeArea()
     }
+}
+
+/// The background used outside the main window's sections (onboarding, Settings).
+struct WindowBackdrop: View {
+    var glow = false
+
+    var body: some View { SectionBackdrop(section: .dashboard) }
 }
 
 /// Stand-in for the real window buttons in off-screen renders.
@@ -114,7 +152,7 @@ struct WindowPage<Trailing: View, Content: View>: View {
             content()
         }
         .padding(.horizontal, 30)
-        .padding(.top, 46)
+        .padding(.top, 62)
         .padding(.bottom, 26)
     }
 }
@@ -133,16 +171,6 @@ extension AppModel {
     var scannedLine: String {
         guard let scan else { return scanning ? "Scanning your home folder..." : "Not scanned yet" }
         return "Scanned \(PanelView.relative(scan.date))"
-    }
-
-    /// Values for the dashboard chips.
-    var toolValues: [(NavItem, String)] {
-        let large = largeFiles.reduce(0) { $0 + $1.size } + downloads.reduce(0) { $0 + $1.size }
-        return [
-            (.files, scan == nil ? "..." : Bytes.format(large)),
-            (.projects, scan == nil ? "..." : Bytes.format(projects.reduce(0) { $0 + $1.size })),
-            (.apps, apps.isEmpty ? "..." : "\(apps.count) apps"),
-        ]
     }
 }
 

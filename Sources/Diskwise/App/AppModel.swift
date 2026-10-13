@@ -68,6 +68,10 @@ final class AppModel: ObservableObject {
     /// The app shown in the window's uninstaller detail.
     @Published var windowApp: String?
     @Published var cleaning: CleaningState?
+    /// The Smart Care scan button was pressed this session.
+    @Published private(set) var smartScanRequested = false
+    @Published private var cleanupMeasured = 0
+    @Published private var cleanupItemCount = 0
     @Published var busy: String?
     @Published var toast: Toast?
     @Published var confirmation: Confirmation?
@@ -132,6 +136,32 @@ final class AppModel: ObservableObject {
         if !scanning, scan.map({ Date().timeIntervalSince($0.date) > 12 * 3600 }) ?? false { startScan() }
     }
 
+    enum SmartPhase { case idle, scanning, done }
+
+    var smartPhase: SmartPhase {
+        guard smartScanRequested else { return .idle }
+        return scanning || cleanupLoading ? .scanning : .done
+    }
+
+    /// Progress of a Smart Care scan: cleanup sizing, plus the folder scan when one runs.
+    var smartProgress: Double {
+        let cleanup = cleanupItemCount > 0 ? min(Double(cleanupMeasured) / Double(cleanupItemCount), 1) : (cleanupLoading ? 0 : 1)
+        return scanning ? min(cleanup * 0.25 + scanFraction * 0.75, 0.99) : min(cleanup, 0.99)
+    }
+
+    /// Smart Care's Scan: re-measures every cleanup group, and rescans folders unless that
+    /// happened in the last half hour.
+    func smartScan() {
+        smartScanRequested = true
+        refreshDisk()
+        loadCleanup()
+        if scan.map({ Date().timeIntervalSince($0.date) > 30 * 60 }) ?? true {
+            startScan()
+        } else if let scan {
+            deriveFromScan(scan)
+        }
+    }
+
     func refreshAll() {
         refreshDisk()
         loadCleanup()
@@ -155,8 +185,12 @@ final class AppModel: ObservableObject {
         let running = Self.runningApps()
         work.async { [weak self] in
             let listed = CleanupCatalog.list(running: running)
-            DispatchQueue.main.async { self?.receive(listed) }
             let items = listed.flatMap(\.items)
+            DispatchQueue.main.async {
+                self?.cleanupItemCount = items.count
+                self?.cleanupMeasured = 0
+                self?.receive(listed)
+            }
             DispatchQueue.concurrentPerform(iterations: items.count) { i in
                 let size = CleanupCatalog.measure(items[i])
                 DispatchQueue.main.async { self?.setSize(size, for: items[i].path) }
@@ -179,6 +213,7 @@ final class AppModel: ObservableObject {
     }
 
     private func setSize(_ size: Int64, for path: String) {
+        cleanupMeasured += 1
         for g in groups.indices {
             if let i = groups[g].items.firstIndex(where: { $0.path == path }) {
                 groups[g].items[i].size = size

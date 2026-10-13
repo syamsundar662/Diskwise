@@ -9,7 +9,7 @@ struct CleanupWindowPage: View {
     var live: Bool
 
     var body: some View {
-        WindowPage(title: "Smart Cleanup",
+        WindowPage(title: "Cleanup",
                    subtitle: "Caches, logs and build data that apps and tools rebuild on their own. Expand a group to pick items.") {
             Button(model.cleanupLoading ? "Checking..." : "Check again") { model.loadCleanup() }
                 .buttonStyle(PillButtonStyle()).disabled(model.cleanupLoading)
