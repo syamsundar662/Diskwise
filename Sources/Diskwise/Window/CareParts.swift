@@ -76,11 +76,13 @@ struct RoundActionButton: View {
     let tint: Color
     var progress: Double? = nil
     var size: CGFloat = 108
+    /// While `progress` is set, the button stops the work instead.
+    var onStop: (() -> Void)? = nil
     let action: () -> Void
     @State private var hovering = false
 
     var body: some View {
-        Button(action: action) {
+        Button(action: { if progress != nil { onStop?() } else { action() } }) {
             ZStack {
                 // Fading a blurred glow is cheap; resizing it would blur it again every frame.
                 Circle().fill(tint.opacity(0.65)).blur(radius: 26)
@@ -96,23 +98,36 @@ struct RoundActionButton: View {
                         .rotationEffect(.degrees(-90))
                         .padding(9)
                         .animation(.easeOut(duration: 0.4), value: progress)
-                    Text("\(Int(progress * 100))%").font(.system(size: size * 0.18, weight: .semibold)).foregroundStyle(.white)
-                        .monospacedDigit()
-                        .contentTransition(.numericText(value: progress))
+                    VStack(spacing: 1) {
+                        if hovering && onStop != nil {
+                            Image(systemName: "stop.fill").font(.system(size: size * 0.2, weight: .bold))
+                                .transition(.scale.combined(with: .opacity))
+                        } else {
+                            Text("\(Int(progress * 100))%").font(.system(size: size * 0.18, weight: .semibold))
+                                .monospacedDigit()
+                                .contentTransition(.numericText(value: progress))
+                        }
+                        if onStop != nil {
+                            Text("Stop").font(.system(size: size * 0.105, weight: .semibold)).opacity(0.75)
+                        }
+                    }
+                    .foregroundStyle(.white)
+                    .animation(.easeOut(duration: 0.15), value: hovering)
                 } else {
                     Text(title).font(.system(size: size * 0.19, weight: .semibold)).foregroundStyle(.white)
                         .contentTransition(.opacity)
                 }
             }
             .frame(width: size, height: size)
-            .scaleEffect(hovering && progress == nil ? 1.05 : 1)
+            .scaleEffect(hovering ? 1.05 : 1)
             .contentShape(Circle())
         }
         .buttonStyle(PressableStyle())
         .onHover { hovering = $0 }
         .animation(.spring(response: 0.3, dampingFraction: 0.7), value: hovering)
-        .disabled(progress != nil)
-        .accessibilityLabel(progress == nil ? title : "Scanning, \(Int((progress ?? 0) * 100)) percent")
+        .disabled(progress != nil && onStop == nil)
+        .help(progress != nil && onStop != nil ? "Stop the scan (Cmd+.)" : title)
+        .accessibilityLabel(progress == nil ? title : "Stop scan, \(Int((progress ?? 0) * 100)) percent done")
     }
 }
 

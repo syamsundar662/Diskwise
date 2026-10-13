@@ -88,7 +88,8 @@ struct SmartCareView: View {
                 Spacer()
                 ZStack {
                     RippleRings(tint: tint, trigger: ripples).frame(width: 108, height: 108)
-                    RoundActionButton(title: buttonTitle, tint: tint, progress: phase == .scanning ? model.smartProgress : nil) {
+                    RoundActionButton(title: buttonTitle, tint: tint, progress: phase == .scanning ? model.smartProgress : nil,
+                                      onStop: { model.stopScan() }) {
                         if phase == .done, model.selectedBytes > 0 {
                             model.confirmClean()
                         } else {
@@ -133,7 +134,7 @@ struct SmartCareView: View {
     private var caption: String {
         switch phase {
         case .idle: return model.scan.map { "Sizes from your last scan, \(PanelView.relative($0.date))." } ?? "Run a scan to see what you can free."
-        case .scanning: return "You can keep working while Diskwise scans."
+        case .scanning: return "You can keep working while Diskwise scans, or press the button to stop."
         case .done: return "Clean removes the junk you have selected in Cleanup."
         }
     }

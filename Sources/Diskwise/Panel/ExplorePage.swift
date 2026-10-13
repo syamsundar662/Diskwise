@@ -39,9 +39,10 @@ struct ExplorePage: View {
                 }
             }
             PageFooter(note: footnote) {
-                Button(model.scanning ? "Scanning..." : "Rescan") { model.startScan() }
-                    .buttonStyle(PillButtonStyle())
-                    .disabled(model.scanning)
+                Button(model.scanning ? "Stop scan" : "Rescan") {
+                    if model.scanning { model.stopScan() } else { model.startScan() }
+                }
+                .buttonStyle(PillButtonStyle())
             }
         }
     }

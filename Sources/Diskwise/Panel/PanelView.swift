@@ -116,9 +116,10 @@ struct PanelView: View {
             Color.black.opacity(0.001)
                 .onTapGesture { withAnimation(.easeOut(duration: 0.15)) { showingMenu = false } }
             VStack(alignment: .leading, spacing: 2) {
-                MenuRow(symbol: "arrow.triangle.2.circlepath", title: model.scanning ? "Scanning..." : "Rescan disk") {
+                MenuRow(symbol: model.isBusyScanning ? "stop.fill" : "arrow.triangle.2.circlepath",
+                        title: model.isBusyScanning ? "Stop scan" : "Rescan disk") {
                     showingMenu = false
-                    model.startScan()
+                    if model.isBusyScanning { model.stopScan() } else { model.startScan() }
                 }
                 MenuRow(symbol: model.alertsOn ? "checkmark.circle.fill" : "circle", title: "Alert when under \(Preferences.shared.alertThresholdGB) GB") {
                     showingMenu = false

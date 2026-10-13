@@ -222,8 +222,8 @@ public enum CleanupCatalog {
     }
 
     /// Size on disk of one item.
-    public static func measure(_ item: CleanupItem) -> Int64 {
-        DiskUsage().size(of: item.path)
+    public static func measure(_ item: CleanupItem, isCancelled: () -> Bool = { false }) -> Int64 {
+        DiskUsage().size(of: item.path, isCancelled: isCancelled)
     }
 
     static func skip(_ name: String, in root: String, claimed: Set<String>) -> Bool {

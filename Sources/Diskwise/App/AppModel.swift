@@ -93,6 +93,9 @@ final class AppModel: ObservableObject {
     /// Checkboxes the user changed by hand, kept across reloads.
     private var choices: [String: Bool] = [:]
     private var leftoversFor: String?
+    /// Cancel tokens of the running folder scan and cache measuring.
+    private var scanToken = CancelToken()
+    private var cleanupToken = CancelToken()
 
     init(readOnly: Bool = false) {
         self.readOnly = readOnly
@@ -137,6 +140,17 @@ final class AppModel: ObservableObject {
     }
 
     enum SmartPhase { case idle, scanning, done }
+
+    var isBusyScanning: Bool { scanning || cleanupLoading }
+
+    /// Stops the folder scan and the cache measuring; the previous results stay.
+    func stopScan() {
+        guard isBusyScanning else { return }
+        scanToken.cancel()
+        cleanupToken.cancel()
+        smartScanRequested = false
+        show(Toast(text: "Scan stopped. Showing the results from before."))
+    }
 
     var smartPhase: SmartPhase {
         guard smartScanRequested else { return .idle }
@@ -183,6 +197,9 @@ final class AppModel: ObservableObject {
         guard !cleanupLoading else { return }
         cleanupLoading = true
         let running = Self.runningApps()
+        let token = CancelToken()
+        cleanupToken = token
+        let before = groups
         work.async { [weak self] in
             let listed = CleanupCatalog.list(running: running)
             let items = listed.flatMap(\.items)
@@ -198,9 +215,30 @@ final class AppModel: ObservableObject {
             queue.maxConcurrentOperationCount = max(2, ProcessInfo.processInfo.activeProcessorCount / 2)
             queue.qualityOfService = .utility
             for item in items {
-                queue.addOperation { batch.add((item.path, CleanupCatalog.measure(item))) }
+                queue.addOperation {
+                    guard !token.isCancelled else { return }
+                    let size = CleanupCatalog.measure(item, isCancelled: { token.isCancelled })
+                    if !token.isCancelled { batch.add((item.path, size)) }
+                }
             }
             queue.waitUntilAllOperationsAreFinished()
+            if token.isCancelled {
+                // Stopped: put back the results from before instead of half measured ones.
+                DispatchQueue.main.async {
+                    guard let self else { return }
+                    if !before.isEmpty, !before.contains(where: \.measuring) {
+                        self.groups = before
+                    } else {
+                        // Nothing complete to go back to: keep what was measured, drop the rest
+                        // until the next scan.
+                        for g in self.groups.indices { self.groups[g].items.removeAll { $0.size == nil } }
+                        self.groups.removeAll { $0.items.isEmpty }
+                    }
+                    self.cleanupLoading = false
+                    self.updateSelection()
+                }
+                return
+            }
             batch.flush()
             let trash = Trash.size()
             DispatchQueue.main.async { self?.finishCleanup(trash: trash) }
@@ -342,6 +380,8 @@ final class AppModel: ObservableObject {
         scanning = true
         scanProgress = nil
         let options = Scanner.Options.standard(fullDiskAccess: fullDiskAccess)
+        let token = CancelToken()
+        scanToken = token
         scanQueue.async { [weak self] in
             // Publish progress twice a second: each update redraws the window.
             var lastPublished = Date.distantPast
@@ -349,11 +389,12 @@ final class AppModel: ObservableObject {
                 guard Date().timeIntervalSince(lastPublished) >= 0.5 else { return }
                 lastPublished = Date()
                 DispatchQueue.main.async { self?.scanProgress = progress }
-            })
+            }, isCancelled: { token.isCancelled })
             if let result { Store.saveScan(result) }
             DispatchQueue.main.async {
                 guard let self else { return }
                 self.scanning = false
+                self.scanProgress = nil
                 if let result {
                     self.scan = result
                     self.deriveFromScan(result)
@@ -674,5 +715,23 @@ final class UpdateBatcher<Value>: @unchecked Sendable {
         lock.unlock()
         guard !values.isEmpty else { return }
         if Thread.isMainThread { deliver(values) } else { DispatchQueue.main.async { self.deliver(values) } }
+    }
+}
+
+/// A flag a background job checks to stop early.
+final class CancelToken: @unchecked Sendable {
+    private let lock = NSLock()
+    private var cancelled = false
+
+    var isCancelled: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return cancelled
+    }
+
+    func cancel() {
+        lock.lock()
+        cancelled = true
+        lock.unlock()
     }
 }

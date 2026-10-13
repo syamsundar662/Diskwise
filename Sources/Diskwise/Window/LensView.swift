@@ -20,8 +20,12 @@ struct LensView: View {
 
     var body: some View {
         WindowPage(title: "Space Lens", subtitle: "Your home folder by size. Click a ring to go inside, the center to go back.") {
-            Button(model.scanning ? "Scanning..." : "Rescan") { model.startScan() }
-                .buttonStyle(PillButtonStyle()).disabled(model.scanning)
+            if model.scanning {
+                Button { model.stopScan() } label: { Label("Stop scan", systemImage: "stop.fill") }
+                    .buttonStyle(PillButtonStyle())
+            } else {
+                Button("Rescan") { model.startScan() }.buttonStyle(PillButtonStyle())
+            }
         } content: {
             if let root {
                 HStack(alignment: .center, spacing: 26) {

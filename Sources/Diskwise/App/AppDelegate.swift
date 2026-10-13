@@ -39,11 +39,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         model.start()
         _ = Updater.shared  // starts Sparkle's scheduled update checks
         updateStatusItem()
-        // DISKWISE_AUTOSCAN=1 starts a Smart Care scan right away (for checking scan performance).
-        if ProcessInfo.processInfo.environment["DISKWISE_AUTOSCAN"] != nil {
+        // DISKWISE_AUTOSCAN=1 starts a Smart Care scan right away (for checking scan performance);
+        // DISKWISE_AUTOSCAN=stop also stops it after a few seconds and prints what is still running.
+        if let mode = ProcessInfo.processInfo.environment["DISKWISE_AUTOSCAN"] {
             DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in
-                self?.model.section = .dashboard
-                self?.model.smartScan()
+                guard let self else { return }
+                self.model.section = .dashboard
+                self.model.smartScan()
+                guard mode == "stop" else { return }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 6) {
+                    print("DISKWISE_CHECK before stop: scanning=\(self.model.scanning) measuring=\(self.model.cleanupLoading) phase=\(self.model.smartPhase)")
+                    self.model.stopScan()
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+                        print("DISKWISE_CHECK after stop: scanning=\(self.model.scanning) measuring=\(self.model.cleanupLoading) phase=\(self.model.smartPhase) groups=\(self.model.groups.count) unmeasured=\(self.model.groups.flatMap(\.items).filter { $0.size == nil }.count)")
+                        fflush(stdout)
+                    }
+                }
             }
         }
         if !atLogin || !prefs.onboardingDone || !prefs.showMenuBarItem {
@@ -119,6 +130,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     // MARK: Menu actions
 
     @objc func rescan(_ sender: Any?) { model.refreshAll() }
+
+    @objc func stopScan(_ sender: Any?) { model.stopScan() }
 
     @objc func showSection(_ sender: NSMenuItem) {
         guard NavItem.allCases.indices.contains(sender.tag) else { return }
@@ -269,6 +282,7 @@ enum MainMenu {
         let file = NSMenu(title: "File")
         file.addItem(item("Open Diskwise", #selector(AppDelegate.showMainWindow(_:)), "n"))
         file.addItem(item("Rescan", #selector(AppDelegate.rescan(_:)), "r"))
+        file.addItem(item("Stop Scan", #selector(AppDelegate.stopScan(_:)), "."))
         file.addItem(.separator())
         file.addItem(item("Close Window", #selector(NSWindow.performClose(_:)), "w"))
         main.addItem(submenu(file))
