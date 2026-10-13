@@ -33,7 +33,7 @@ struct AppsPage: View {
                     .font(.system(size: 11)).foregroundStyle(Theme.secondary)
             }
             ListArea(live: live, height: listHeight) {
-                ForEach(apps) { app in
+                ForEach(Array(apps.enumerated()), id: \.element.id) { index, app in
                     ListRow(icon: { FileIcon(path: app.path, size: 26) },
                             title: app.name,
                             badge: app.version.isEmpty ? nil : app.version,
@@ -41,7 +41,10 @@ struct AppsPage: View {
                             size: app.size,
                             fraction: app.size.map { Double($0) / Double(max(biggest, 1)) },
                             onOpen: { if let onOpen { onOpen(app) } else { model.openApp(app) } })
+                        .staggered(index)
+                        .rowRemoval()
                 }
+                .animation(.easeInOut(duration: 0.35), value: apps.map(\.id))
             }
             .padding(.horizontal, 6)
             PageFooter(note: "Apple's own apps aren't listed. Uninstalled apps go to the Trash.") { EmptyView() }
@@ -94,7 +97,7 @@ struct AppDetailPage: View {
                 if !model.leftoversLoading && model.leftovers.isEmpty {
                     EmptyNote(symbol: "checkmark.seal", title: "No leftovers found", detail: "Only the app itself will be removed.")
                 }
-                ForEach(model.leftovers) { item in
+                ForEach(Array(model.leftovers.enumerated()), id: \.element.id) { index, item in
                     ListRow(checked: model.leftoverSelection.contains(item.path),
                             toggle: { toggle(item.path) },
                             icon: { FileIcon(path: item.path, size: 18) },
@@ -103,6 +106,7 @@ struct AppDetailPage: View {
                             subtitle: item.kind,
                             size: item.size,
                             actions: [RowAction(symbol: "magnifyingglass", help: "Show in Finder") { model.reveal(item.path) }])
+                        .staggered(index)
                 }
             }
             .padding(.horizontal, 6)

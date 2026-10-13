@@ -162,6 +162,13 @@ struct StatusOverlay: View {
     @ObservedObject var model: AppModel
 
     var body: some View {
+        ZStack { content }
+            .animation(.spring(response: 0.42, dampingFraction: 0.8), value: model.toast)
+            .animation(.spring(response: 0.42, dampingFraction: 0.8), value: model.busy)
+    }
+
+    @ViewBuilder
+    private var content: some View {
         if let busy = model.busy {
             HStack(spacing: 8) {
                 Spinner(size: 12)
@@ -173,7 +180,7 @@ struct StatusOverlay: View {
             .overlay(Capsule().strokeBorder(Theme.border))
             .shadow(color: .black.opacity(0.35), radius: 10, y: 4)
             .padding(.bottom, 14)
-            .transition(.opacity)
+            .transition(.move(edge: .bottom).combined(with: .opacity))
         } else if let toast = model.toast {
             HStack(spacing: 8) {
                 Image(systemName: "checkmark.circle.fill").foregroundStyle(Theme.green)
@@ -195,7 +202,7 @@ struct StatusOverlay: View {
             .overlay(Capsule().strokeBorder(Theme.border))
             .shadow(color: .black.opacity(0.35), radius: 10, y: 4)
             .padding(.bottom, 14)
-            .transition(.opacity)
+            .transition(.move(edge: .bottom).combined(with: .opacity))
         }
     }
 }

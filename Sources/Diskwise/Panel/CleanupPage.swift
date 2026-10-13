@@ -11,8 +11,10 @@ struct CleanupPage: View {
     var body: some View {
         VStack(spacing: 0) {
             PageToolbar {
-                Text("\(Bytes.format(model.selectedBytes)) selected")
-                    .font(.system(size: 12, weight: .semibold)).foregroundStyle(Theme.text)
+                HStack(spacing: 4) {
+                    RollingBytes(bytes: model.selectedBytes, font: .system(size: 12, weight: .semibold))
+                    Text("selected").font(.system(size: 12, weight: .semibold)).foregroundStyle(Theme.text)
+                }
                 Text("of \(Bytes.format(model.cleanupTotal)) found").font(.system(size: 11)).foregroundStyle(Theme.secondary)
                 if model.cleanupMeasuring { Spinner(size: 10) }
                 Spacer()
@@ -28,12 +30,17 @@ struct CleanupPage: View {
                         EmptyNote(symbol: "checkmark.seal", title: "Nothing to clean", detail: "No caches or logs worth removing right now.")
                     }
                 }
-                ForEach(model.groups) { group in
-                    groupRow(group)
+                ForEach(Array(model.groups.enumerated()), id: \.element.id) { index, group in
+                    groupRow(group).staggered(index).rowRemoval()
                     if expanded.contains(group.id) {
-                        ForEach(group.items.sorted { ($0.size ?? 0) > ($1.size ?? 0) }) { item in itemRow(item, in: group) }
+                        ForEach(group.items.sorted { ($0.size ?? 0) > ($1.size ?? 0) }) { item in
+                            itemRow(item, in: group)
+                                .transition(.asymmetric(insertion: .opacity.combined(with: .offset(y: -6)),
+                                                        removal: .move(edge: .leading).combined(with: .opacity)))
+                        }
                     }
                 }
+                .animation(.easeInOut(duration: 0.35), value: model.groups.map { $0.items.map(\.path) })
                 trashRow
             }
             .padding(.horizontal, 6)
@@ -66,6 +73,8 @@ struct CleanupPage: View {
                 Spinner(size: 11)
             } else {
                 Text(Bytes.format(group.size)).font(Theme.number(12.5, .semibold)).foregroundStyle(Theme.text).monospacedDigit()
+                    .contentTransition(.numericText(value: Double(group.size)))
+                    .animation(.snappy(duration: 0.4), value: group.size)
             }
             Image(systemName: "chevron.right").font(.system(size: 9, weight: .bold)).foregroundStyle(Theme.tertiary)
                 .rotationEffect(.degrees(open ? 90 : 0))

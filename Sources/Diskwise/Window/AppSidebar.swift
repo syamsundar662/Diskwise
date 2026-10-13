@@ -55,12 +55,14 @@ private struct SidebarRow: View {
     let namespace: Namespace.ID
     let action: () -> Void
     @State private var hovering = false
+    @State private var pop = false
 
     var body: some View {
         Button(action: action) {
             HStack(spacing: 11) {
                 Icon3D(name: icon, symbol: symbol, tint: tint, size: 26)
-                    .scaleEffect(hovering && !selected ? 1.08 : 1)
+                    .scaleEffect(pop ? 1.24 : hovering && !selected ? 1.08 : 1)
+                    .rotationEffect(.degrees(pop ? -10 : 0))
                 Text(title)
                     .font(.system(size: 13, weight: selected ? .semibold : .medium))
                     .foregroundStyle(.white.opacity(selected ? 1 : 0.8))
@@ -90,6 +92,14 @@ private struct SidebarRow: View {
         .buttonStyle(.plain)
         .onHover { hovering = $0 }
         .animation(.easeOut(duration: 0.15), value: hovering)
+        .onChange(of: selected) { _, now in
+            // A little pop and tilt on the icon of the section you just opened.
+            guard now else { return }
+            withAnimation(.spring(response: 0.22, dampingFraction: 0.45)) { pop = true }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) {
+                withAnimation(.spring(response: 0.45, dampingFraction: 0.55)) { pop = false }
+            }
+        }
         .accessibilityLabel(title)
         .accessibilityAddTraits(selected ? .isSelected : [])
     }
@@ -98,6 +108,7 @@ private struct SidebarRow: View {
 /// Top right of the window: free space and the alerts bell.
 struct WindowToolbar: View {
     @ObservedObject var model: AppModel
+    @State private var pulse = false
 
     var body: some View {
         HStack(spacing: 8) {
@@ -113,9 +124,22 @@ struct WindowToolbar: View {
                 .padding(.horizontal, 14).padding(.vertical, 8)
                 .background(Capsule().fill(.white.opacity(0.13)))
                 .overlay(Capsule().strokeBorder(.white.opacity(0.1)))
+                .overlay {
+                    // Pulses when free space changes, like after a cleanup.
+                    Capsule().strokeBorder(Theme.green, lineWidth: 2)
+                        .scaleEffect(pulse ? 1.35 : 1)
+                        .opacity(pulse ? 0 : 0.9)
+                        .opacity(pulse ? 1 : 0)
+                }
                 .contentShape(Capsule())
             }
             .buttonStyle(PressableStyle())
+            .onChange(of: model.disk?.available ?? 0) { old, new in
+                guard old > 0, abs(new - old) > 200 * Bytes.mb else { return }
+                pulse = false
+                withAnimation(.easeOut(duration: 1.0)) { pulse = true }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.05) { pulse = false }
+            }
             .help("Free space on \(model.disk?.name ?? "your disk"). Opens Space Lens.")
             Button { NSApp.sendAction(#selector(AppDelegate.showSettings(_:)), to: nil, from: nil) } label: {
                 Image(systemName: model.alertsOn ? "bell.fill" : "bell.slash.fill").font(.system(size: 12))

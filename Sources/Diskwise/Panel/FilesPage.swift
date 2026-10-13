@@ -60,7 +60,7 @@ struct FilesPage: View {
                               title: tab == .large ? "No files over \(Bytes.format(minimum))" : "No old downloads",
                               detail: tab == .large ? "Dependencies, caches and app data are left out of this list." : nil)
                 }
-                ForEach(rows) { row in
+                ForEach(Array(rows.enumerated()), id: \.element.id) { index, row in
                     ListRow(checked: model.fileSelection.contains(row.path),
                             toggle: { toggle(row.path) },
                             icon: { FileIcon(path: row.path, size: 22) },
@@ -70,7 +70,10 @@ struct FilesPage: View {
                             size: row.size,
                             fraction: Double(row.size) / Double(max(biggest, 1)),
                             actions: [RowAction(symbol: "magnifyingglass", help: "Show in Finder") { model.reveal(row.path) }])
+                        .staggered(index)
+                        .rowRemoval()
                 }
+                .animation(.easeInOut(duration: 0.35), value: rows.map(\.id))
             }
             .padding(.horizontal, 6)
             PageFooter(note: chosen.isEmpty ? "Select files to move them to the Trash." : "\(chosen.count) selected, \(Bytes.format(chosenSize))") {
@@ -113,7 +116,7 @@ struct ProjectsPage: View {
                     EmptyNote(symbol: "checkmark.seal", title: staleOnly ? "No idle projects" : "No project folders found",
                               detail: "Looks for node_modules, build, Pods, target, .next, .venv and similar folders.")
                 }
-                ForEach(rows) { item in
+                ForEach(Array(rows.enumerated()), id: \.element.id) { index, item in
                     ListRow(checked: model.projectSelection.contains(item.path),
                             toggle: { toggle(item.path) },
                             icon: { FileIcon(path: item.project, size: 22) },
@@ -124,7 +127,10 @@ struct ProjectsPage: View {
                             size: item.size,
                             fraction: Double(item.size) / Double(max(biggest, 1)),
                             actions: [RowAction(symbol: "magnifyingglass", help: "Show in Finder") { model.reveal(item.path) }])
+                        .staggered(index)
+                        .rowRemoval()
                 }
+                .animation(.easeInOut(duration: 0.35), value: rows.map(\.id))
             }
             .padding(.horizontal, 6)
             PageFooter(note: "Deleted for good. Rebuild with npm install,\npod install or your build tool.") {

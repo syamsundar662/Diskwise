@@ -141,6 +141,7 @@ struct WindowPage<Trailing: View, Content: View>: View {
     let subtitle: String
     @ViewBuilder var trailing: () -> Trailing
     @ViewBuilder var content: () -> Content
+    @State private var appeared = RenderMode.snapshot
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
@@ -149,8 +150,15 @@ struct WindowPage<Trailing: View, Content: View>: View {
                 Spacer(minLength: 12)
                 trailing()
             }
+            .opacity(appeared ? 1 : 0)
+            .offset(y: appeared ? 0 : -10)
             content()
+                .opacity(appeared ? 1 : 0)
+                .offset(y: appeared ? 0 : 18)
+                .animation(.spring(response: 0.55, dampingFraction: 0.86).delay(0.06), value: appeared)
         }
+        .animation(.spring(response: 0.5, dampingFraction: 0.86), value: appeared)
+        .onAppear { appeared = true }
         .padding(.horizontal, 30)
         .padding(.top, 62)
         .padding(.bottom, 26)

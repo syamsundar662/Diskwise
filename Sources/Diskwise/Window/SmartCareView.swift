@@ -50,7 +50,6 @@ struct SmartCareView: View {
             }
             HStack(spacing: 50) {
                 ZStack {
-                    if phase == .scanning { OrbitLight(glow: NavItem.dashboard.gradient.glow, size: 340).transition(.opacity) }
                     discGlow
                     Group {
                         if RenderMode.snapshot {
@@ -225,6 +224,8 @@ private struct FeatureRow: View {
 struct ActivityView: View {
     @ObservedObject var model: AppModel
     @State private var days = 7
+    /// The chart line draws in from the left.
+    @State private var reveal: CGFloat = RenderMode.snapshot ? 1 : 0
 
     var body: some View {
         let points = model.history.recent(days: days)
@@ -237,6 +238,11 @@ struct ActivityView: View {
                     SectionLabel(text: "Available space", detail: days == 7 ? "last 7 days" : "last 30 days")
                     if points.count >= 2 {
                         AreaChart(values: values.map(Double.init), color: NavItem.activity.color, height: 240)
+                            .mask(alignment: .leading) {
+                                GeometryReader { geo in Rectangle().frame(width: geo.size.width * reveal) }
+                            }
+                            .onAppear { drawIn() }
+                            .onChange(of: days) { drawIn() }
                         HStack {
                             Text(points.first.map { $0.date.formatted(date: .abbreviated, time: .shortened) } ?? "")
                             Spacer()
@@ -252,14 +258,20 @@ struct ActivityView: View {
                 .padding(20)
                 .windowCard()
                 HStack(spacing: 14) {
-                    stat("Available now", model.disk.map { Bytes.format($0.available) } ?? "...")
-                    stat("Change", model.history.change(days: days).map { "\($0 < 0 ? "-" : "+")\(Bytes.format(abs($0)))" } ?? "...")
-                    stat("Lowest", values.min().map(Bytes.format) ?? "...")
-                    stat("Highest", values.max().map(Bytes.format) ?? "...")
+                    stat("Available now", model.disk.map { Bytes.format($0.available) } ?? "...").staggered(0)
+                    stat("Change", model.history.change(days: days).map { "\($0 < 0 ? "-" : "+")\(Bytes.format(abs($0)))" } ?? "...").staggered(1)
+                    stat("Lowest", values.min().map(Bytes.format) ?? "...").staggered(2)
+                    stat("Highest", values.max().map(Bytes.format) ?? "...").staggered(3)
                 }
                 Spacer(minLength: 0)
             }
         }
+    }
+
+    private func drawIn() {
+        guard !RenderMode.snapshot else { return }
+        reveal = 0
+        withAnimation(.easeInOut(duration: 1.2)) { reveal = 1 }
     }
 
     private func stat(_ label: String, _ value: String) -> some View {

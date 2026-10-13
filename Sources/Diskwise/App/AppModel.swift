@@ -191,10 +191,17 @@ final class AppModel: ObservableObject {
                 self?.cleanupMeasured = 0
                 self?.receive(listed)
             }
-            DispatchQueue.concurrentPerform(iterations: items.count) { i in
-                let size = CleanupCatalog.measure(items[i])
-                DispatchQueue.main.async { self?.setSize(size, for: items[i].path) }
+            // Half the cores at background priority, so the window stays smooth, and results
+            // published in batches instead of one window update per item.
+            let batch = UpdateBatcher<(String, Int64)> { sizes in self?.setSizes(sizes) }
+            let queue = OperationQueue()
+            queue.maxConcurrentOperationCount = max(2, ProcessInfo.processInfo.activeProcessorCount / 2)
+            queue.qualityOfService = .utility
+            for item in items {
+                queue.addOperation { batch.add((item.path, CleanupCatalog.measure(item))) }
             }
+            queue.waitUntilAllOperationsAreFinished()
+            batch.flush()
             let trash = Trash.size()
             DispatchQueue.main.async { self?.finishCleanup(trash: trash) }
         }
@@ -212,14 +219,16 @@ final class AppModel: ObservableObject {
         updateSelection()
     }
 
-    private func setSize(_ size: Int64, for path: String) {
-        cleanupMeasured += 1
-        for g in groups.indices {
-            if let i = groups[g].items.firstIndex(where: { $0.path == path }) {
-                groups[g].items[i].size = size
-                return
+    private func setSizes(_ sizes: [(String, Int64)]) {
+        let byPath = Dictionary(sizes, uniquingKeysWith: { a, _ in a })
+        var updated = groups
+        for g in updated.indices {
+            for i in updated[g].items.indices {
+                if let size = byPath[updated[g].items[i].path] { updated[g].items[i].size = size }
             }
         }
+        groups = updated
+        cleanupMeasured += sizes.count
     }
 
     private func finishCleanup(trash: Int64?) {
@@ -334,7 +343,11 @@ final class AppModel: ObservableObject {
         scanProgress = nil
         let options = Scanner.Options.standard(fullDiskAccess: fullDiskAccess)
         scanQueue.async { [weak self] in
+            // Publish progress twice a second: each update redraws the window.
+            var lastPublished = Date.distantPast
             let result = Scanner.scan(home: NSHomeDirectory(), options: options, progress: { progress in
+                guard Date().timeIntervalSince(lastPublished) >= 0.5 else { return }
+                lastPublished = Date()
                 DispatchQueue.main.async { self?.scanProgress = progress }
             })
             if let result { Store.saveScan(result) }
@@ -624,5 +637,42 @@ enum Store {
     static func saveScan(_ result: ScanResult) {
         try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         try? JSONEncoder().encode(result).write(to: scanURL, options: .atomic)
+    }
+}
+
+/// Collects results from many threads and hands them to the main thread a few
+/// times a second, instead of one window update per result.
+final class UpdateBatcher<Value>: @unchecked Sendable {
+    private let lock = NSLock()
+    private var pending: [Value] = []
+    private var scheduled = false
+    private let interval: TimeInterval
+    private let deliver: ([Value]) -> Void
+
+    init(interval: TimeInterval = 0.25, deliver: @escaping ([Value]) -> Void) {
+        self.interval = interval
+        self.deliver = deliver
+    }
+
+    func add(_ value: Value) {
+        lock.lock()
+        pending.append(value)
+        let schedule = !scheduled
+        scheduled = true
+        lock.unlock()
+        if schedule {
+            DispatchQueue.main.asyncAfter(deadline: .now() + interval) { self.flush() }
+        }
+    }
+
+    /// Delivers whatever is waiting now, on the main thread.
+    func flush() {
+        lock.lock()
+        let values = pending
+        pending = []
+        scheduled = false
+        lock.unlock()
+        guard !values.isEmpty else { return }
+        if Thread.isMainThread { deliver(values) } else { DispatchQueue.main.async { self.deliver(values) } }
     }
 }

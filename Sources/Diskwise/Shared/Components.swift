@@ -331,13 +331,17 @@ struct Checkbox: View {
             ZStack {
                 Circle().strokeBorder(checked || mixed ? Color.clear : Color.white.opacity(0.35), lineWidth: 1.4)
                 if checked || mixed {
-                    Circle().fill(Theme.cyan)
+                    Circle().fill(Theme.cyan).transition(.scale(scale: 0.3).combined(with: .opacity))
                     Image(systemName: mixed && !checked ? "minus" : "checkmark")
                         .font(.system(size: 8.5, weight: .heavy))
                         .foregroundStyle(Theme.onCyan)
+                        .transition(.scale(scale: 0.2).combined(with: .opacity))
                 }
             }
             .frame(width: 16, height: 16)
+            .scaleEffect(checked ? 1 : 0.94)
+            .animation(.spring(response: 0.28, dampingFraction: 0.5), value: checked)
+            .animation(.spring(response: 0.28, dampingFraction: 0.5), value: mixed)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -447,6 +451,8 @@ struct ListRow<Icon: View>: View {
         HStack(spacing: 9) {
             if let checked { Checkbox(checked: checked, disabled: checkDisabled, toggle: toggle) }
             icon()
+                .scaleEffect(hovering ? 1.08 : 1)
+                .animation(.spring(response: 0.3, dampingFraction: 0.6), value: hovering)
             VStack(alignment: .leading, spacing: 1) {
                 HStack(spacing: 6) {
                     Text(title).font(.system(size: 12, weight: .medium)).foregroundStyle(Theme.text)
@@ -481,6 +487,8 @@ struct ListRow<Icon: View>: View {
             VStack(alignment: .trailing, spacing: 3) {
                 if let size {
                     Text(Bytes.format(size)).font(Theme.number(12, .semibold)).foregroundStyle(Theme.text).monospacedDigit()
+                        .contentTransition(.numericText(value: Double(size)))
+                        .animation(.snappy(duration: 0.4), value: size)
                 } else {
                     Spinner(size: 11)
                 }
@@ -631,6 +639,31 @@ struct EmptyNote: View {
         }
         .frame(maxWidth: .infinity)
         .padding(.top, 70)
+    }
+}
+
+/// Rows that cascade in when a list first appears.
+struct Staggered: ViewModifier {
+    let index: Int
+    @State private var shown = RenderMode.snapshot
+
+    func body(content: Content) -> some View {
+        content
+            .opacity(shown ? 1 : 0)
+            .offset(y: shown ? 0 : 10)
+            .onAppear {
+                guard !shown else { return }
+                withAnimation(.spring(response: 0.45, dampingFraction: 0.86).delay(Double(min(index, 14)) * 0.035)) { shown = true }
+            }
+    }
+}
+
+extension View {
+    func staggered(_ index: Int) -> some View { modifier(Staggered(index: index)) }
+
+    /// Removed rows slide out to the left.
+    func rowRemoval() -> some View {
+        transition(.asymmetric(insertion: .identity, removal: .move(edge: .leading).combined(with: .opacity)))
     }
 }
 

@@ -40,6 +40,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         DiscFrames.shared.load()
         _ = Updater.shared  // starts Sparkle's scheduled update checks
         updateStatusItem()
+        // DISKWISE_AUTOSCAN=1 starts a Smart Care scan right away (for checking scan performance).
+        if ProcessInfo.processInfo.environment["DISKWISE_AUTOSCAN"] != nil {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in
+                self?.model.section = .dashboard
+                self?.model.smartScan()
+            }
+        }
         if !atLogin || !prefs.onboardingDone || !prefs.showMenuBarItem {
             showMainWindow(nil)
         } else {

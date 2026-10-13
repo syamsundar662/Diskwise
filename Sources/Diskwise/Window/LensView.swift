@@ -9,6 +9,8 @@ struct LensView: View {
     var live = true
     @State private var path: [String] = []
     @State private var hovered: [String]?
+    /// Sweeps the rings in when the page opens or the chart zooms.
+    @State private var grow: Double = RenderMode.snapshot ? 1 : 0
 
     static let colors: [Color] = [Theme.cyan, Theme.violet, Theme.teal, Theme.amber, Theme.pink, Theme.blue,
                                   Color(red: 0.55, green: 0.85, blue: 0.40), Color(red: 1.0, green: 0.62, blue: 0.45)]
@@ -41,7 +43,7 @@ struct LensView: View {
             let side = min(geo.size.width, geo.size.height)
             let layout = SunburstLayout(root: root, colors: Self.colors, size: side)
             ZStack {
-                SunburstCanvas(layout: layout, hovered: hovered)
+                SunburstCanvas(layout: layout, hovered: hovered, progress: grow)
                     .id(path)
                     .transition(.asymmetric(insertion: .scale(scale: 0.82).combined(with: .opacity),
                                             removal: .scale(scale: 1.12).combined(with: .opacity)))
@@ -63,7 +65,14 @@ struct LensView: View {
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .onAppear { sweepIn() }
         }
+    }
+
+    private func sweepIn() {
+        guard !RenderMode.snapshot else { return }
+        grow = 0
+        withAnimation(.easeOut(duration: 0.8)) { grow = 1 }
     }
 
     private func centerLabel(_ root: FolderNode, layout: SunburstLayout) -> some View {
@@ -88,6 +97,7 @@ struct LensView: View {
     private func zoom(to newPath: [String]) {
         hovered = nil
         withAnimation(.spring(response: 0.5, dampingFraction: 0.86)) { path = newPath }
+        sweepIn()
     }
 
     // MARK: Inspector
@@ -98,7 +108,7 @@ struct LensView: View {
             Hairline()
             ListArea(live: live, height: nil) {
                 ForEach(Array(root.children.prefix(40).enumerated()), id: \.element.id) { i, child in
-                    row(child, index: i, parent: root)
+                    row(child, index: i, parent: root).staggered(i)
                 }
                 if root.restCount > 0 {
                     ListRow(icon: { RoundedRectangle(cornerRadius: 3).fill(Theme.gray).frame(width: 10, height: 10) },
@@ -222,16 +232,29 @@ struct SunburstLayout {
     }
 }
 
-struct SunburstCanvas: View {
+struct SunburstCanvas: View, Animatable {
     let layout: SunburstLayout
     let hovered: [String]?
+    /// 0...1: rings sweep in around the circle, inner rings first.
+    var progress: Double = 1
+
+    var animatableData: Double {
+        get { progress }
+        set { progress = newValue }
+    }
 
     var body: some View {
         Canvas { ctx, _ in
             for s in layout.segments {
-                let (inner, outer) = layout.radii(s.level)
-                let gap = min(0.008, (s.end - s.start) * 0.2)
-                let a0 = s.start - Double.pi / 2 + gap / 2, a1 = s.end - Double.pi / 2 - gap / 2
+                // Each ring starts a little after the one inside it.
+                let ringProgress = min(max((progress - Double(s.level - 1) * 0.15) / 0.7, 0), 1)
+                guard ringProgress > 0 else { continue }
+                var (inner, outer) = layout.radii(s.level)
+                if hovered == s.path { outer += 7 }
+                let start = s.start * ringProgress, end = s.end * ringProgress
+                let gap = min(0.008, (end - start) * 0.2)
+                guard end - start > gap else { continue }
+                let a0 = start - Double.pi / 2 + gap / 2, a1 = end - Double.pi / 2 - gap / 2
                 var p = Path()
                 p.addArc(center: layout.center, radius: outer, startAngle: .radians(a0), endAngle: .radians(a1), clockwise: false)
                 p.addArc(center: layout.center, radius: inner, startAngle: .radians(a1), endAngle: .radians(a0), clockwise: true)

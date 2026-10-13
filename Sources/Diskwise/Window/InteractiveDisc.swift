@@ -103,16 +103,18 @@ struct DiscView: NSViewRepresentable {
 }
 
 final class DiscLayerView: NSView {
+    private let floater = CALayer()
     private let container = CALayer()
     private let imageLayer = CALayer()
     private let beam = CAGradientLayer()
     private let beamMask = CALayer()
+    private let orbit = CAGradientLayer()
+    private let orbitRing = CAShapeLayer()
     private var link: CADisplayLink?
     private var target = CGSize.zero
     private var current = CGSize.zero
     private var velocity = CGSize.zero
     private var frame3 = (-1, -1)
-    private var celebrationStart: CFTimeInterval?
     var celebrations = 0
     var bounces = 0
 
@@ -122,8 +124,19 @@ final class DiscLayerView: NSView {
         didSet {
             guard scanning != oldValue else { return }
             beam.isHidden = !scanning
-            if scanning { startBeam() } else { beam.removeAllAnimations() }
-            run()
+            if scanning {
+                startBeam()
+                startSway()
+                showOrbit(true)
+                link?.isPaused = true
+            } else {
+                beam.removeAllAnimations()
+                stopSway()
+                showOrbit(false)
+                frame3 = (-1, -1)
+                render(time: CACurrentMediaTime())
+                run()
+            }
         }
     }
 
@@ -144,7 +157,31 @@ final class DiscLayerView: NSView {
         beamHolder.addSublayer(beam)
         container.addSublayer(imageLayer)
         container.addSublayer(beamHolder)
-        layer?.addSublayer(container)
+        floater.addSublayer(container)
+        // The light that circles the disc while scanning: a conic gradient seen through a ring.
+        orbit.type = .conic
+        orbit.startPoint = CGPoint(x: 0.5, y: 0.5)
+        orbit.endPoint = CGPoint(x: 0.5, y: 0)
+        orbit.colors = [NSColor.clear.cgColor, NSColor.clear.cgColor,
+                        NSColor(red: 0.55, green: 0.5, blue: 1, alpha: 1).cgColor, NSColor.white.cgColor]
+        orbit.locations = [0, 0.7, 0.93, 1]
+        orbitRing.fillColor = nil
+        orbitRing.strokeColor = NSColor.white.cgColor
+        orbitRing.lineWidth = 4
+        orbitRing.lineCap = .round
+        orbit.mask = orbitRing
+        orbit.opacity = 0
+        layer?.addSublayer(orbit)
+        layer?.addSublayer(floater)
+        // A gentle idle float, run by Core Animation off the main thread.
+        let float = CABasicAnimation(keyPath: "transform.translation.y")
+        float.fromValue = -6
+        float.toValue = 6
+        float.duration = 3.2
+        float.autoreverses = true
+        float.repeatCount = .infinity
+        float.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+        floater.add(float, forKey: "float")
         imageLayer.contents = Art.image("disc-care")
         DiscFrames.shared.load { [weak self] in
             self?.frame3 = (-1, -1)
@@ -161,7 +198,8 @@ final class DiscLayerView: NSView {
         super.layout()
         CATransaction.begin()
         CATransaction.setDisableActions(true)
-        container.frame = bounds
+        floater.frame = bounds
+        container.frame = floater.bounds
         imageLayer.frame = container.bounds
         if let holder = beam.superlayer {
             holder.frame = container.bounds
@@ -169,6 +207,10 @@ final class DiscLayerView: NSView {
             beam.frame = CGRect(x: -bounds.width * 0.5, y: -bounds.height * 0.3, width: bounds.width * 0.35, height: bounds.height * 1.6)
             beam.setAffineTransform(CGAffineTransform(rotationAngle: -0.35))
         }
+        let ring = bounds.insetBy(dx: -bounds.width * 0.04, dy: -bounds.height * 0.04)
+        orbit.frame = ring
+        orbitRing.frame = orbit.bounds
+        orbitRing.path = CGPath(ellipseIn: orbit.bounds.insetBy(dx: 3, dy: 3), transform: nil)
         var perspective = CATransform3DIdentity
         perspective.m34 = -1 / (max(bounds.width, 1) * 2.6)
         container.sublayerTransform = perspective
@@ -188,11 +230,14 @@ final class DiscLayerView: NSView {
 
     func setTarget(_ value: CGSize) {
         target = value
-        run()
+        if !scanning { run() }
     }
 
     func celebrate() {
-        celebrationStart = CACurrentMediaTime()
+        // One quick turn across and back, played by Core Animation.
+        playMotion(duration: Self.celebration, repeats: false, key: "celebrate") { p in
+            (15 * sin(p * 2 * .pi) * (1 - p) + Double(self.current.width) * 15, Double(self.current.height) * 10)
+        }
         let pop = CAKeyframeAnimation(keyPath: "transform.scale")
         pop.values = [1, 1.08, 0.98, 1]
         pop.keyTimes = [0, 0.35, 0.7, 1]
@@ -211,6 +256,82 @@ final class DiscLayerView: NSView {
         spring.initialVelocity = -4
         spring.duration = spring.settlingDuration
         container.add(spring, forKey: "bounce")
+    }
+
+    /// Side to side sway while scanning, entirely in Core Animation so a busy main thread can't stutter it.
+    private func startSway() {
+        playMotion(duration: 4.2, repeats: true, key: "sway") { p in
+            (12 * sin(p * 2 * .pi), 4 * sin(p * 4 * .pi + 0.6))
+        }
+    }
+
+    private func stopSway() {
+        for layer in [imageLayer, beamMask] { layer.removeAnimation(forKey: "sway-contents") }
+        for layer in [imageLayer, beam.superlayer].compactMap({ $0 }) { layer.removeAnimation(forKey: "sway-transform") }
+    }
+
+    private func showOrbit(_ visible: Bool) {
+        if visible {
+            let spin = CABasicAnimation(keyPath: "transform.rotation.z")
+            spin.fromValue = 0
+            spin.toValue = -2 * Double.pi
+            spin.duration = 2.4
+            spin.repeatCount = .infinity
+            orbit.add(spin, forKey: "spin")
+        }
+        CATransaction.begin()
+        CATransaction.setAnimationDuration(0.4)
+        orbit.opacity = visible ? 1 : 0
+        CATransaction.commit()
+        if !visible {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) { [weak self] in
+                guard let self, !self.scanning else { return }
+                self.orbit.removeAnimation(forKey: "spin")
+            }
+        }
+    }
+
+    /// Plays a yaw/pitch path through the Blender frames as Core Animation keyframes:
+    /// the frame shown (discrete) plus the small 3D rotation between frames (smooth).
+    private func playMotion(duration: CFTimeInterval, repeats: Bool, key: String, path: (Double) -> (Double, Double)) {
+        guard DiscFrames.shared.ready else { return }
+        let samples = Int(duration * 90)
+        var images: [Any] = [], transforms: [NSValue] = [], times: [NSNumber] = []
+        for i in 0...samples {
+            let p = Double(i) / Double(samples)
+            let (yaw, pitch) = path(p)
+            let pose = Self.pose(yaw: yaw, pitch: pitch)
+            guard let image = DiscFrames.shared.image(pose.yi, pose.pi) else { return }
+            images.append(image)
+            transforms.append(NSValue(caTransform3D: pose.transform))
+            times.append(NSNumber(value: p))
+        }
+        let contents = CAKeyframeAnimation(keyPath: "contents")
+        contents.values = images
+        contents.keyTimes = times
+        contents.calculationMode = .discrete
+        let rotation = CAKeyframeAnimation(keyPath: "transform")
+        rotation.values = transforms
+        rotation.keyTimes = times
+        rotation.calculationMode = .linear
+        for animation in [contents, rotation] {
+            animation.duration = duration
+            animation.repeatCount = repeats ? .infinity : 1
+            animation.isRemovedOnCompletion = true
+        }
+        imageLayer.add(contents, forKey: key + "-contents")
+        beamMask.add(contents, forKey: key + "-contents")
+        imageLayer.add(rotation, forKey: key + "-transform")
+        beam.superlayer?.add(rotation, forKey: key + "-transform")
+    }
+
+    private static func pose(yaw: Double, pitch: Double) -> (yi: Int, pi: Int, transform: CATransform3D) {
+        let yaws = DiscFrames.yaws, pitches = DiscFrames.pitches
+        let yi = nearest(min(max(yaw, yaws.first!), yaws.last!), in: yaws)
+        let pi = nearest(min(max(pitch, pitches.first!), pitches.last!), in: pitches)
+        var transform = CATransform3DMakeRotation(CGFloat((yaw - yaws[yi]) * .pi / 180), 0, 1, 0)
+        transform = CATransform3DRotate(transform, CGFloat(-(pitch - pitches[pi]) * .pi / 180), 1, 0, 0)
+        return (yi, pi, transform)
     }
 
     private func startBeam() {
@@ -246,43 +367,26 @@ final class DiscLayerView: NSView {
 
         let settled = abs(target.width - current.width) < 0.001 && abs(target.height - current.height) < 0.001
             && abs(velocity.width) < 0.001 && abs(velocity.height) < 0.001
-        let celebrating = celebrationStart.map { link.targetTimestamp - $0 < Self.celebration } ?? false
-        if settled && !scanning && !celebrating {
+        if settled || scanning {
             current = target
             velocity = .zero
-            celebrationStart = nil
             link.isPaused = true
         }
     }
 
+    /// Shows the disc turned toward the cursor (the main-thread path; sway and spins run in Core Animation).
     private func render(time: CFTimeInterval) {
-        var yaw = Double(current.width) * 15
-        var pitch = Double(current.height) * 10
-        if scanning {
-            yaw = yaw * 0.4 + 12 * sin(time * 1.7)
-            pitch = pitch * 0.4 + 4 * sin(time * 1.1)
-        }
-        if let start = celebrationStart {
-            let p = (time - start) / Self.celebration
-            if p >= 0, p < 1 { yaw += 15 * sin(p * 2 * .pi) * (1 - p) }
-        }
-        let yaws = DiscFrames.yaws, pitches = DiscFrames.pitches
-        let yi = Self.nearest(min(max(yaw, yaws.first!), yaws.last!), in: yaws)
-        let pi = Self.nearest(min(max(pitch, pitches.first!), pitches.last!), in: pitches)
-
+        guard !scanning else { return }
+        let pose = Self.pose(yaw: Double(current.width) * 15, pitch: Double(current.height) * 10)
         CATransaction.begin()
         CATransaction.setDisableActions(true)
-        if frame3 != (yi, pi), let image = DiscFrames.shared.image(yi, pi) {
-            frame3 = (yi, pi)
+        if frame3 != (pose.yi, pose.pi), let image = DiscFrames.shared.image(pose.yi, pose.pi) {
+            frame3 = (pose.yi, pose.pi)
             imageLayer.contents = image
             beamMask.contents = image
         }
-        let residualYaw = (yaw - yaws[yi]) * .pi / 180
-        let residualPitch = (pitch - pitches[pi]) * .pi / 180
-        var transform = CATransform3DMakeRotation(CGFloat(residualYaw), 0, 1, 0)
-        transform = CATransform3DRotate(transform, CGFloat(-residualPitch), 1, 0, 0)
-        imageLayer.transform = transform
-        beam.superlayer?.transform = transform
+        imageLayer.transform = pose.transform
+        beam.superlayer?.transform = pose.transform
         CATransaction.commit()
     }
 
@@ -407,26 +511,5 @@ struct CompletionBurst: View {
                 withAnimation(.easeOut(duration: 0.4)) { showCheck = false }
             }
         }
-    }
-}
-
-/// A light that circles the disc while scanning.
-struct OrbitLight: View {
-    let glow: Color
-    let size: CGFloat
-    @State private var turning = false
-
-    var body: some View {
-        Circle()
-            .trim(from: 0, to: 0.28)
-            .stroke(AngularGradient(colors: [glow.opacity(0), glow, .white], center: .center),
-                    style: StrokeStyle(lineWidth: 4, lineCap: .round))
-            .frame(width: size * 1.08, height: size * 1.08)
-            .rotationEffect(.degrees(turning ? 360 : 0))
-            .onAppear {
-                guard !RenderMode.snapshot else { return }
-                withAnimation(.linear(duration: 2.4).repeatForever(autoreverses: false)) { turning = true }
-            }
-            .allowsHitTesting(false)
     }
 }
