@@ -368,3 +368,59 @@ final class SafetyTests: XCTestCase {
         XCTAssertEqual(SafetyAdvisor.verdict(forLeftoverKind: "Application Support").safety, .review)
     }
 }
+
+final class SystemStatsTests: XCTestCase {
+    func testCPUUsageFromTickChange() {
+        let before = CPUTicks(busy: 1_000, idle: 9_000)
+        let after = CPUTicks(busy: 1_300, idle: 9_700)
+        XCTAssertEqual(CPUTicks.usage(from: before, to: after)!, 0.3, accuracy: 0.0001)
+        XCTAssertNil(CPUTicks.usage(from: after, to: after), "no ticks passed")
+        XCTAssertNil(CPUTicks.usage(from: after, to: before), "counters went backwards")
+    }
+
+    func testMemoryUsedLikeActivityMonitor() {
+        // App memory (internal minus purgeable) + wired + compressed.
+        let used = MemoryStats.used(pageSize: 16_384, internal: 500_000, purgeable: 20_000, wired: 300_000, compressed: 100_000)
+        XCTAssertEqual(used, Int64(880_000) * 16_384)
+        XCTAssertEqual(MemoryStats.used(pageSize: 16_384, internal: 10, purgeable: 50, wired: 0, compressed: 0), 0)
+    }
+
+    func testMemoryFormatUsesBinaryGigabytes() {
+        XCTAssertEqual(Bytes.formatMemory(24 * 1_073_741_824), "24 GB")
+        XCTAssertEqual(Bytes.formatMemory(15_246_000_000), "14.2 GB")
+        XCTAssertEqual(Bytes.formatMemory(900 * 1_048_576), "900 MB")
+    }
+
+    func testDieTemperatureAveragesOnlyDieSensors() {
+        let readings: [(String, Double)] = [
+            ("PMU tdie1", 62), ("PMU tdie2", 58), ("PMU tdev1", -9202.9),
+            ("NAND CH0 temp", 49), ("PMU tdie3", 0), ("PMU tdie4", 300),
+        ]
+        XCTAssertEqual(Thermals.dieTemperature(readings)!, 60, accuracy: 0.0001)
+        XCTAssertNil(Thermals.dieTemperature([("NAND CH0 temp", 49)]))
+    }
+
+    func testBatteryFromRegistry() {
+        let registry: [String: Any] = [
+            "CycleCount": 315, "CurrentCapacity": 38, "MaxCapacity": 100,
+            "IsCharging": true, "ExternalConnected": true, "FullyCharged": false,
+            "BatteryData": ["NominalChargeCapacity": 5456, "DesignCapacity": 6249],
+        ]
+        let battery = BatteryInfo(registry: registry, health: nil)!
+        XCTAssertEqual(battery.cycles, 315)
+        XCTAssertEqual(battery.charge, 38)
+        XCTAssertTrue(battery.charging)
+        XCTAssertEqual(battery.health, 87, "falls back to nominal over design capacity")
+        XCTAssertEqual(BatteryInfo(registry: registry, health: BatteryHealth(percent: 90, condition: "Good"))!.health, 90)
+        XCTAssertNil(BatteryInfo(registry: [:], health: nil), "desktop Macs have no battery")
+    }
+
+    func testBatteryHealthFromSystemProfiler() {
+        let json = """
+        {"SPPowerDataType":[{"_name":"spbattery_information","sppower_battery_health_info":
+        {"sppower_battery_cycle_count":315,"sppower_battery_health":"Good","sppower_battery_health_maximum_capacity":"90%"}}]}
+        """
+        XCTAssertEqual(BatteryHealth(profilerJSON: Data(json.utf8)), BatteryHealth(percent: 90, condition: "Good"))
+        XCTAssertNil(BatteryHealth(profilerJSON: Data(#"{"SPPowerDataType":[]}"#.utf8)))
+    }
+}

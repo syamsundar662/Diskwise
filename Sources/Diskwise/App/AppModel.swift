@@ -61,6 +61,8 @@ final class AppModel: ObservableObject {
     @Published var leftoversLoading = false
 
     @Published var history = SpaceHistory()
+    /// CPU, GPU, memory, temperature and battery for the panel; publishes on its own.
+    let system = SystemMonitor()
     /// Menu bar panel navigation.
     @Published var page: Page = .home
     /// Main window navigation.

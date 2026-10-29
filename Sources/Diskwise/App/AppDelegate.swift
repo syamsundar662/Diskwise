@@ -219,6 +219,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let fitting = host.fittingSize
         panel.show(below: anchor, size: fitting.height > 0 ? fitting : panelSize)
         model.refreshIfStale()
+        model.system.start()
     }
 
     private func closePanel() {
@@ -226,6 +227,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         panelOpen = false
         closedAt = Date()
         if mainWindow?.isVisible != true { model.confirmation = nil }
+        model.system.stop()
         panel.hide()
     }
 

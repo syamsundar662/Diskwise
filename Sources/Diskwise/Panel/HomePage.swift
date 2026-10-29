@@ -1,14 +1,15 @@
 import SwiftUI
 import DiskwiseCore
 
-/// Overview: how full the disk is and what fills it, one-click cleanup, the
-/// tools, and available space over the last week.
+/// Overview: how full the disk is and what fills it, the Mac's live load,
+/// one-click cleanup, the tools, and available space over the last week.
 struct HomePage: View {
     @ObservedObject var model: AppModel
 
     var body: some View {
         VStack(spacing: 10) {
             overview
+            SystemCard(monitor: model.system)
             if !model.fullDiskAccess { accessBanner }
             cleanupCard
             tools

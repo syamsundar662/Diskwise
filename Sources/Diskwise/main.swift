@@ -28,6 +28,7 @@ enum Snapshot {
         RenderMode.snapshot = true
         let model = AppModel(readOnly: true)
         model.start()
+        model.system.start()
         if model.scan == nil { model.startScan() }
         Task { @MainActor in
             @MainActor func ready() -> Bool {
