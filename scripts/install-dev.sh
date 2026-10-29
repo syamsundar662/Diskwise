@@ -35,7 +35,10 @@ echo "== 1. Generating Diskwise.xcodeproj =="
 
 echo
 echo "== 2. Building Release (unsigned) =="
+# Xcode 27 needs the destination spelled out; without it the scheme resolves
+# to no platform and Sparkle's XCFramework is reported missing.
 xcodebuild -project Diskwise.xcodeproj -scheme Diskwise -configuration Release \
+    -destination 'generic/platform=macOS' \
     -derivedDataPath "$derived_data" CODE_SIGNING_ALLOWED=NO build
 
 if [[ ! -d "$built_app" ]]; then

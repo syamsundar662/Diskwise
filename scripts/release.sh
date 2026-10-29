@@ -91,7 +91,9 @@ echo "== 1. Generating Diskwise.xcodeproj =="
 echo
 echo "== 2. Archiving (unsigned) =="
 rm -rf "$archive_path"
+# Xcode 27 needs the destination spelled out (see install-dev.sh).
 xcodebuild -project Diskwise.xcodeproj -scheme Diskwise -configuration Release \
+    -destination 'generic/platform=macOS' \
     -archivePath "$archive_path" CODE_SIGNING_ALLOWED=NO archive
 
 archived_app="$archive_path/Products/Applications/$app_name"
